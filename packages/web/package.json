@@ -1,0 +1,34 @@
+{
+  "name": "@zktable/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "zkTable arcade — Next.js web shell (landing, lobby, wallet connect)",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stellar/freighter-api": "^6.0.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.23.0",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.2",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.19.0",
+    "eslint-config-next": "^16.2.10",
+    "tailwindcss": "^4.3.2",
+    "typescript": "^5.7.3"
+  }
+}

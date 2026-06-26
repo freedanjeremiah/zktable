@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/*
+  zkTable design tokens — "noir case-file" arcade.
+
+  Scene: a detective reviewing a case file under a desk lamp at 1am, the city
+  outside dark. The file itself is precise and typed, not romantic. Two
+  accents carry all meaning:
+    - amber/brass ("verified")  → proofs that closed, moves that landed,
+      primary actions. The stamp ink.
+    - cold slate ("hidden")     → anything zk.hidden — secret positions,
+      proving-in-progress, fog.
+  Every neutral is tinted warm (toward the same hue as the brass) so the
+  darkness reads as film-grain charcoal, never pure #000.
+*/
+
+@theme {
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-source-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", monospace;
+
+  /* surfaces — warm charcoal, deepening toward panels */
+  --color-bg: oklch(16% 0.014 55);
+  --color-bg-elevated: oklch(20% 0.016 55);
+  --color-bg-panel: oklch(23.5% 0.018 55);
+  --color-bg-overlay: oklch(12% 0.014 55);
+
+  /* borders */
+  --color-border: oklch(34% 0.02 55);
+  --color-border-strong: oklch(44% 0.03 55);
+
+  /* text */
+  --color-fg: oklch(94% 0.008 75);
+  --color-fg-muted: oklch(70% 0.015 65);
+  --color-fg-subtle: oklch(52% 0.014 60);
+
+  /* accent — "verified on-chain" brass stamp ink */
+  --color-accent: oklch(76% 0.14 68);
+  --color-accent-strong: oklch(68% 0.16 55);
+  --color-accent-fg: oklch(16% 0.02 55);
+
+  /* hidden — cold slate for zk.hidden / proving / fog */
+  --color-hidden: oklch(58% 0.055 250);
+  --color-hidden-strong: oklch(68% 0.075 248);
+  --color-hidden-fg: oklch(14% 0.02 250);
+
+  /* status */
+  --color-success: oklch(68% 0.13 145);
+  --color-danger: oklch(62% 0.19 25);
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.625rem;
+
+  --animate-pulse-slow: pulse-slow 3.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  --animate-fade-up: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes pulse-slow {
+    0%,
+    100% {
+      opacity: 0.45;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-body);
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  .font-display {
+    font-family: var(--font-display);
+  }
+
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-fg);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .bg-grain {
+    background-image: radial-gradient(
+      oklch(30% 0.02 55 / 0.55) 0.6px,
+      transparent 0.6px
+    );
+    background-size: 3px 3px;
+  }
+}
