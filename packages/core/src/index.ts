@@ -1,0 +1,7 @@
+export * from './types.js'
+export { defineGame } from './define-game.js'
+export { createMatch, Match } from './engine.js'
+export type { MatchOptions } from './engine.js'
+export { zk } from './zk.js'
+export type { ZkMarker } from './zk.js'
+export { ticTacToe } from './games/tic-tac-toe.js'

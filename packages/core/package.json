@@ -1,0 +1,15 @@
+{
+  "name": "@zktable/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "zkTable SDK: declarative game model (defineGame), deterministic engine, ZK component markers",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}
