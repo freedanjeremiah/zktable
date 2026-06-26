@@ -128,7 +128,14 @@ export type Transcript = {
   outcome: 'phantom' | 'investigator' | null
 }
 
-async function ensureVk(log: (line: string) => void, vkPath: string): Promise<void> {
+/**
+ * Compiles the `move_along` circuit and writes its verification key if
+ * missing. Exported (alongside `ensureContractWasms`/`randomSalt`/
+ * `addressOf` below) so a stateful, per-match orchestrator (e.g. the M4b web
+ * API) can reuse the exact same build/tooling path `playBlackout` uses,
+ * rather than re-shelling to `nargo`/`bb` itself.
+ */
+export async function ensureVk(log: (line: string) => void, vkPath: string): Promise<void> {
   const { access } = await import('node:fs/promises')
   try {
     await access(vkPath)
@@ -164,7 +171,8 @@ async function ensureVk(log: (line: string) => void, vkPath: string): Promise<vo
   )
 }
 
-async function ensureContractWasms(log: (line: string) => void): Promise<void> {
+/** Builds the verifier/referee contract wasms if missing. See `ensureVk` for why this is exported. */
+export async function ensureContractWasms(log: (line: string) => void): Promise<void> {
   const { access } = await import('node:fs/promises')
   const missing: string[] = []
   for (const p of [DEFAULT_VERIFIER_WASM, DEFAULT_REFEREE_WASM]) {
@@ -187,8 +195,8 @@ async function ensureContractWasms(log: (line: string) => void): Promise<void> {
   )
 }
 
-/** A random bigint in [1, 2^128), used as a movement salt. */
-function randomSalt(): bigint {
+/** A random bigint in [1, 2^128), used as a movement salt. Exported — see `ensureVk`. */
+export function randomSalt(): bigint {
   return BigInt('0x' + randomBytes(16).toString('hex')) + 1n
 }
 
@@ -347,11 +355,13 @@ export async function playBlackout(opts: PlayBlackoutOptions = {}): Promise<Tran
   }
 }
 
-function rosterTickets(roster: Roster, tickets: TicketCounts): Record<PlayerId, TicketCounts> {
+/** Same ticket wallet for every roster member. Exported — see `ensureVk`. */
+export function rosterTickets(roster: Roster, tickets: TicketCounts): Record<PlayerId, TicketCounts> {
   return Object.fromEntries(roster.map((p) => [p.id, tickets]))
 }
 
-async function addressOf(source: string): Promise<string> {
+/** Resolves a `stellar` CLI identity name (e.g. `'alice'`) to its address. Exported — see `ensureVk`. */
+export async function addressOf(source: string): Promise<string> {
   const { execFile } = await import('node:child_process')
   const { promisify } = await import('node:util')
   const execFileAsync = promisify(execFile)

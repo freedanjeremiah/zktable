@@ -18,6 +18,7 @@
     "@zktable/core": "workspace:*"
   },
   "devDependencies": {
+    "@zktable/agents": "workspace:*",
     "tsx": "^4.19.2"
   }
 }
