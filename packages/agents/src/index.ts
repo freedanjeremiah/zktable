@@ -1,0 +1,8 @@
+export type { Agent, GameEvent } from './types.js'
+export { HeuristicAgent, RandomAgent } from './heuristic-agent.js'
+export type { Policy } from './heuristic-agent.js'
+export { ClaudeAgent, DEFAULT_CLAUDE_AGENT_MODEL } from './claude-agent.js'
+export type { ClaudeAgentOptions } from './claude-agent.js'
+export { assertLegalMove, deepEqual } from './move-utils.js'
+export { createRng, randomIndex } from './rng.js'
+export type { Rng } from './rng.js'

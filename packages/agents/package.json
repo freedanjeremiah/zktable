@@ -1,0 +1,19 @@
+{
+  "name": "@zktable/agents",
+  "version": "0.1.0",
+  "private": true,
+  "description": "zkTable AI agent harness: game-agnostic Agent interface, HeuristicAgent/RandomAgent baselines, and ClaudeAgent. Agents see only a PlayerView (public state + their own secret) and move through the same proof path as humans.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "@zktable/core": "workspace:*"
+  }
+}
