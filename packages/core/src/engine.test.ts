@@ -380,6 +380,30 @@ describe('reveal checkpoints', () => {
   })
 })
 
+// --- setSecret() ---------------------------------------------------------
+
+describe('match.setSecret', () => {
+  it('replaces the given player\'s stored secret, leaving other players untouched', () => {
+    const match = createMatch(secretGame(), roster2)
+    match.setSecret('p1', { code: 'new-code-for-p1' })
+    expect(match.view('p1').self.secret).toEqual({ code: 'new-code-for-p1' })
+    expect(match.view('p2').self.secret).toEqual({ code: 'code-for-p2' })
+  })
+
+  it('is visible on the next view() even mid-match, without affecting public state', () => {
+    const match = createMatch(secretGame(), roster2)
+    const publicBefore = match.state.public
+    match.setSecret('p2', { code: 'updated' })
+    expect(match.view('p2').self.secret).toEqual({ code: 'updated' })
+    expect(match.state.public).toBe(publicBefore)
+  })
+
+  it('throws for an unknown playerId', () => {
+    const match = createMatch(secretGame(), roster2)
+    expect(() => match.setSecret('ghost', { code: 'x' })).toThrow(/unknown player/i)
+  })
+})
+
 // --- determinism -----------------------------------------------------------
 
 describe('determinism', () => {

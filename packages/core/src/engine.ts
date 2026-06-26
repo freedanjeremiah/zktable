@@ -68,6 +68,19 @@ export class Match {
     this.state = state
   }
 
+  /**
+   * Replace `playerId`'s stored secret wholesale (does not merge). For
+   * hidden-movement games whose `apply` reducers are pure over `MatchState`
+   * (secret-free) and therefore cannot themselves update a player's secret —
+   * the caller (e.g. after generating a fresh ZK commitment) calls this to
+   * keep local `view()`/prediction in sync with what was actually committed
+   * on-chain. Never touches `state` (public) or any other player's secret.
+   */
+  setSecret(playerId: PlayerId, secret: SecretState): void {
+    this.assertKnownPlayer(playerId)
+    this.secrets.set(playerId, secret)
+  }
+
   /** This player's view: public state, their own secret only, their resources, their legal moves. */
   view(playerId: PlayerId): PlayerView {
     this.assertKnownPlayer(playerId)

@@ -1,0 +1,23 @@
+{
+  "name": "@zktable/blackout",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Blackout: Scotland-Yard-style hidden pursuit, the zkTable flagship game (defineGame + real ZK-verified hidden moves)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "play": "tsx src/play.ts"
+  },
+  "dependencies": {
+    "@zktable/circuits": "workspace:*",
+    "@zktable/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}
