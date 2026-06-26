@@ -5,6 +5,7 @@ members = [
     "crates/test-utils",
     "contracts/verifier",
     "contracts/referee",
+    "contracts/liars-dice-referee",
 ]
 
 [workspace.dependencies]

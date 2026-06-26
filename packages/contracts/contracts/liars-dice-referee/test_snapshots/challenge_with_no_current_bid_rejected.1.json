@@ -1,0 +1,306 @@
+{
+  "generators": {
+    "address": 2,
+    "nonce": 0,
+    "mux_id": 0
+  },
+  "auth": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "ledger": {
+    "protocol_version": 26,
+    "sequence_number": 0,
+    "timestamp": 0,
+    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "base_reserve": 0,
+    "min_persistent_entry_ttl": 4096,
+    "min_temp_entry_ttl": 16,
+    "max_entry_ttl": 6312000,
+    "ledger_entries": [
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": "ledger_key_contract_instance",
+              "durability": "persistent",
+              "val": {
+                "contract_instance": {
+                  "executable": {
+                    "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  },
+                  "storage": [
+                    {
+                      "key": {
+                        "symbol": "vk"
+                      },
+                      "val": {
+                        "bytes": "0000000000002000000000000000000d000000000000001700000000000000011b2e8b5864808a75fa0e4b8e88b6ef5572f0dba45401668bffbdbd2fb2de097420ca433d9b628a8098f8a204bb00ddc6ab0826d4e52942df38440ecb1a6bbd550d25d93574122b1714085ba0265781acf78753b349e01181cf5ffc7e80f593a7209e7060a158ecb83ebd56f3e82ae7ab0a777a2d8d5cf77b07776fc9779b0515052f247b9ec32c0e00a2f47f0399cc2eb0c000125c5501bddfb19b052fab336c2602eb1b7590cdbbecf922463d9c8d6a2a4387d059520759a110201dd90a409715db249c8167e39a4bf585d7b1ac22e658bfced5fc3681e849d4d7ad48b024581b206654f47bc4338aadbf88aee0b304c33a8e255f32f19ff7ffa784c58fa95527bfcffdb2757e27b3951835577b60214272346300d61039dcefaf37f1f6117c2d6d946e72f40413c538525d15fd870907b0330877e4f494d805fe414ae9799315b106a0ed64fda74f1d325634c59f938cc30b533d4737f299ad58c31007c7cc266ab9ab233a33f08434e782ee922506516a7d80a10b1742358a8d56ae4d7a0c1958b13f38f58756e23989a418de3c113d47a2256ba6f60a9e2ec0523c52a991286c1d4c53af6654de284fbb620f90a9e00aa9470a9e3c58a56cc81e212df923188d52f32eec3ba09699f5894b71e53840d721b750339e90ade06602556679d60f9c9baa286ad3b68e25859eedaf2a247758c99623ad869891a3298acaeb45260cbdba25897b4fd766462bef0d2eb12da207245070d1c8685590a1f66ec0cb1500d8a2900ec60dd8b9ec4896a3c0f7b1cf682519c4013eed6293725af5229727294a134e7a584ba03a3add68b7e0d07548afb8763632ca2e9250d95df8629fa611dc30ac9b33dec44a059cd13121848a15cd493b32e00d65d582b76ee94485bd1e66a497e47e24afc2f0e1edb50970d37aac37426a1955d2e856939bfd383e15153a3f54f83fb1c903f0fc577ec75c2352e287191e3c0d1fb1b2a75476b0c75927dc1896d480f5ea3bdac51335b40e78cbcb12bcecac3997defeb2bf606b43f20bc304feef5340a993bc6ac3e7f1674239ada925d4f7193a7899abd6b90c16f01a537ea26bf6bc98d61a4c7b4211862c52d7a3768bf6cd34640f040de711c56e0b70aacd17dec680ef88afb5c0d60780b35099001f890a61037390201a09050127177a6e8509725f6ebde5347ac6b43dd53941b9757adbfd7a8a0ee47d938ebd1d632aaec06977afc4515b033cd0f06792b2e95891038ad50b2357fdfe3973622d7cdcfe206fb4fb0433e2e6db3eb0ef02038313346cd7a48cae6c2f671be99221f4e94e70e589d7b5b7be4af3d9d7364311c614a7dcbe4c2bdd559d9054948003dd1b8e10ff4b03ce8ef6fd1d3b23df148756764e0b380381206b5bc48ffdfc09320f3a2510ac8967c92a8091736e4100166eca9c4af60047aef38d6901d3b02d9426bb716ab781ba1a8d03d16ffaf17ac1fff3f800a68f176753b6a2e682bf040c1be633309c9b4b584b48c25c60b15cdfded8227f8aa9e44c013ec326b3280c20ddcadedaa69a781dba0f3cf6ea595c5d04080ec218f3c0edc13801a258fc1b96cd72e586ee148fd33fd03a27f66832e65f32fc1683d7ac4219313b8c4703051e34b85c0812ff2c10a64e5ace7cc790dfe3d624c53bfac5cec251f4d8714d1b867dccbcd199cbdec06269047d6e0e9038f1de582062d3f4455887319f196b0675c7a6175b318af40186caafd4960b6c4d9b290403713307c9e2c956815ea505e9fdaf875b879a31b659184fe44a0ae9a3f72df6f576b1efc23145799445ea0f252f94e760a7a39e20bf29be1bf78eece48d7ecf46fc6f4d5edb7374f9f0030bd6a325f48281f75cafa7b655767652fedae723b11af3b3542847d9c2168e352e0cddbc5712d79b59cb3b41ebbcdd494997477ab161763e46601d95844837ef303126892f664d8d505964d14315ec426db4c64531d350750df62dbbc41a1bd900874a5ad262eecc6b565e0b08507476a6b2c6040c0c62bd59acfe3e3e125672127b2a745a1b74968c3edc18982b9bef082fb517183c9c6841c2b8ef2ca1df043037afd9a9b93f603a09cc1e153d172403ef0cd0ebfbb559a83e1181c0a1c5f3237f29721ad29da15bb3aa76a7d655287777d6ea36abb75ae2d073716f11d5672aecd48089890ea0798eb952c66824d38e9426ad3085b68b00a93c17897c28771216bdb2f0d961bb8a7a23331d215078d8a9ce405ce559f441f2e71477ff3ddb0000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000000216e3321536a21fd0d5c10dea7930b17ee20be2c993f9dba610c6acd4c49829070713d764a635ba454efe3edd86a7de53106ba7b77499b579302fb34214c33e2b"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": "ledger_key_contract_instance",
+              "durability": "persistent",
+              "val": {
+                "contract_instance": {
+                  "executable": {
+                    "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  },
+                  "storage": [
+                    {
+                      "key": {
+                        "symbol": "bidlog"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "curbid"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "dicen"
+                      },
+                      "val": {
+                        "u32": 5
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "nplayers"
+                      },
+                      "val": {
+                        "u32": 2
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "phase"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "Bid"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "players"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "map": [
+                              {
+                                "key": {
+                                  "symbol": "alive"
+                                },
+                                "val": {
+                                  "bool": true
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "dice_commitments"
+                                },
+                                "val": {
+                                  "vec": [
+                                    {
+                                      "bytes": "25622d53cbd120e4414e4d728b601251f8424737a8c75fd62b147ed467e2195d"
+                                    },
+                                    {
+                                      "bytes": "219c54f2909ed3c3640bf0c5d60e4b2f98201ca65ce3b4418a85848b22751e6c"
+                                    },
+                                    {
+                                      "bytes": "2d3c4836b67cc15702cab4e5c2b39efa1eea87416df1d7e1a70ade0257bc6a8d"
+                                    },
+                                    {
+                                      "bytes": "1072bcd6a37bc5b1ffa857f6e83335b66d6057df763e3b149d27e808a7edd0f9"
+                                    },
+                                    {
+                                      "bytes": "0408ab60a3550a890ddcfedc8d8e9a4d0f2855b3a60aa47079995399928c57e6"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "nonce"
+                                },
+                                "val": {
+                                  "bytes": "00000000000000000000000000000000000000000000000000000000000bdb29"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "nonce_commitment"
+                                },
+                                "val": {
+                                  "bytes": "0459295bd71676f50cc2bdcc074d92e94624ba5a83f96967a851e1a5b9be768e"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "revealed_dice"
+                                },
+                                "val": {
+                                  "vec": []
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "map": [
+                              {
+                                "key": {
+                                  "symbol": "alive"
+                                },
+                                "val": {
+                                  "bool": true
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "dice_commitments"
+                                },
+                                "val": {
+                                  "vec": [
+                                    {
+                                      "bytes": "12915dc381aaa8928d830fb1230132c9423a40888e30af5a67ee48da11cbdcf7"
+                                    },
+                                    {
+                                      "bytes": "0c7cbd4225696bda55fe2118fdd48dd7b936d1e59f7b60822a43e2d3c7e9355e"
+                                    },
+                                    {
+                                      "bytes": "2bbbd3364bfe4c87afe4a5b1838577ffbd15955a52b6f2cba6043ee453e9a493"
+                                    },
+                                    {
+                                      "bytes": "10f5ba5ba69375483fcbf114581df5650cd8dbee85546962c6fc6331b80668cb"
+                                    },
+                                    {
+                                      "bytes": "1b2539abe73dfe7c30b8981840a870ad74046c1c3e46a3731f0aafd5ad29b502"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "nonce"
+                                },
+                                "val": {
+                                  "bytes": "00000000000000000000000000000000000000000000000000000000000d8cc2"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "nonce_commitment"
+                                },
+                                "val": {
+                                  "bytes": "049b2464895047c5e8cd74f7cdd3ee6d40c172e550ec1c2c195ddde543339dec"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "revealed_dice"
+                                },
+                                "val": {
+                                  "vec": []
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "seed"
+                      },
+                      "val": {
+                        "bytes": "2dabe9b6972bc1f021a8a6e14586631d4ea9a4802712a94c07626ff70325f309"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "sides"
+                      },
+                      "val": {
+                        "u32": 6
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "turn"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "verifier"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_code": {
+              "ext": "v0",
+              "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "code": ""
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      }
+    ]
+  },
+  "events": []
+}

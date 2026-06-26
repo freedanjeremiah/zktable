@@ -1,0 +1,22 @@
+{
+  "name": "@zktable/liars-dice",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Liar's Dice: hidden ZK-proven-fair rolls + escalating bluff bids, the zkTable `dice` + `sealed` showcase (defineGame + real ZK-verified dice)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "play": "tsx src/play.ts"
+  },
+  "dependencies": {
+    "@zktable/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}
