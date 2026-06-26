@@ -11,5 +11,6 @@ target/
 packages/circuits/**/target/
 !packages/circuits/**/target/.gitkeep
 
-# move_along Prover.toml is generated per-witness by graph-tools
+# move_along/dice_valid Prover.toml are generated per-witness by graph-tools
 packages/circuits/move_along/Prover.toml
+packages/circuits/dice_valid/Prover.toml
