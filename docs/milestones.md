@@ -50,5 +50,29 @@ bb's `public_inputs` to the tool's output exactly.
 | Illegal edge | rejected off-chain (no valid witness) |
 | Public-input layout | `[c_old, c_new, ticket, root]` (128 B) — matches bb |
 
-Remaining M2: generic Soroban **referee** (binds proofs to authoritative state) +
-TS `board` module wiring into `@zktable/core`.
+## M2 — `board` module + `move_along` circuit + generic referee ✅
+
+**Done:** 2026-07-03. The full hidden-movement stack works on live testnet.
+
+- **`move_along` circuit** (commit `d69956d`): hidden→hidden move along a legal
+  graph edge; Poseidon2 commitments + depth-10 edge-Merkle membership.
+- **`zktable-graph` tool** (commit `d69956d`): off-chain edge-tree/witness/commitment
+  builder; Poseidon byte-identical to circuit (bb `public_inputs` match exactly).
+- **TS `board` module** `@zktable/circuits` (commit `396b1b1`): `BoardGraph` +
+  `BoardProver` generate & verify real UltraHonk proofs; 9 tests.
+- **`zktable-referee` contract** (commit `773226a`): binds each proof to its OWN
+  stored `c_old` + graph root before cross-contract-verifying; enforces turn
+  order, roles, tickets, reveal/capture. 11 native tests incl. a real
+  cross-contract proof verification + binding-rejection (wrong c_old / wrong root).
+
+**On-chain evidence (testnet) — a ZK-verified hidden move through the referee:**
+
+| What | Value |
+|---|---|
+| Referee contract | `CDZFHUWWIXKCIKZIWNV3AEC4MHBED3FQL3VS2JIUXC6OPFI57CJ7JOPL` |
+| move_along verifier | `CCFSPUAXSXAA5Y7YOGVNCZFJFF67J2AYRT25YHM2O6CNQFRFCHGZYDK4` |
+| `submit_hidden_move` tx | `a0a2e1193508beab25f5962ffab1011edccc31c13509bbc6332164f78e376af1` (Ok) |
+| State after | phantom commitment → `c_new`, taxi 10→9, `ticket_feed=[0]`, turn→investigator |
+
+Known gap: referee has no `require_auth()` yet (fine for headless single-wallet;
+harden before multiplayer — tracked).
