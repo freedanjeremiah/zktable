@@ -1,0 +1,16 @@
+{
+  "name": "@zktable/circuits",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pre-built Noir (UltraHonk) circuits + witness builders for zkTable modules",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build:circuits": "bash scripts/build_all.sh",
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

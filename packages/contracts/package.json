@@ -1,0 +1,11 @@
+{
+  "name": "@zktable/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Generic Soroban referee contract + vendored UltraHonk verifier for zkTable",
+  "scripts": {
+    "build": "cargo +stable build --release --target wasm32v1-none",
+    "test": "cargo +stable test",
+    "deploy:verifier": "bash scripts/deploy_verifier.sh"
+  }
+}
