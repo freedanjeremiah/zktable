@@ -1,0 +1,25 @@
+# Standalone workspace: isolates this std host tool from the no_std wasm
+# contract workspace (avoids testutils/std feature unification onto the verifier).
+[workspace]
+
+[package]
+name = "zktable-graph-tools"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Off-chain builder for the `board` module: builds the edge-Merkle tree, computes
+# the public root, position commitments, and the witness (Prover.toml) for the
+# `move_along` circuit. Uses soroban-poseidon so hashing matches the Noir circuit
+# and the on-chain referee exactly.
+
+[[bin]]
+name = "zktable-graph"
+path = "src/main.rs"
+
+[dependencies]
+soroban-sdk = { version = "26.0.1", features = ["testutils", "alloc"] }
+soroban-poseidon = "26.0.0"
+num-bigint = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

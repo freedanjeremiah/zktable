@@ -1,0 +1,13 @@
+{
+  "nodes": [0, 1, 2, 3, 4, 5],
+  "bidirectional": true,
+  "edges": [
+    { "from": 0, "to": 1, "ticket": 0 },
+    { "from": 1, "to": 2, "ticket": 0 },
+    { "from": 2, "to": 3, "ticket": 1 },
+    { "from": 3, "to": 4, "ticket": 1 },
+    { "from": 4, "to": 5, "ticket": 2 },
+    { "from": 0, "to": 3, "ticket": 2 },
+    { "from": 1, "to": 4, "ticket": 1 }
+  ]
+}
