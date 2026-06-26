@@ -4,10 +4,12 @@ members = [
     "crates/ultrahonk-verifier",
     "crates/test-utils",
     "contracts/verifier",
+    "contracts/referee",
 ]
 
 [workspace.dependencies]
 soroban-sdk = { version = "26.0.1", default-features = false }
+soroban-poseidon = "26.0.0"
 
 [profile.release]
 opt-level = "z"

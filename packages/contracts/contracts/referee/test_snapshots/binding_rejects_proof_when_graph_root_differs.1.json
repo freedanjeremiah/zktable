@@ -1,0 +1,332 @@
+{
+  "generators": {
+    "address": 4,
+    "nonce": 0,
+    "mux_id": 0
+  },
+  "auth": [
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    [],
+    []
+  ],
+  "ledger": {
+    "protocol_version": 26,
+    "sequence_number": 0,
+    "timestamp": 0,
+    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "base_reserve": 0,
+    "min_persistent_entry_ttl": 4096,
+    "min_temp_entry_ttl": 16,
+    "max_entry_ttl": 6312000,
+    "ledger_entries": [
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": "ledger_key_contract_instance",
+              "durability": "persistent",
+              "val": {
+                "contract_instance": {
+                  "executable": {
+                    "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  },
+                  "storage": [
+                    {
+                      "key": {
+                        "symbol": "vk"
+                      },
+                      "val": {
+                        "bytes": "0000000000002000000000000000000d00000000000000140000000000000001139ab1aebf70f7e418006c183311d31ef05de4597e054159db57dd7470a2b40209239bcef4364c3574d6ef26a3bfe626dec106813aaa74653647525320f2988223c1e865bc75235d501d32fd4f4fa257adbd851607ee1ed5ea1a41b0c78bd44f0e785e558f50f0142e56801052e410a979f9f657a5c4721a7171f24639d0697f076f57e17f022f69dd396da533a107e23edea058f9898ec8357e3b9e5c00b39c146d8e33ec2112d2bd44d9fa1cf4859719b77ae55119c350544fb988f82136b509728566bf6c0fca86f2fe9c04cb97500f0c2ae144841772c6e0e4d2e546964f0a0333e42b7f3e7b2af908784cdea32d47c8e9b3c015247f287e1e4092696b322a610f2dea6754384d67544c5e504f543191359812971f18d81711b65326304c29ca545a081a8cba846a0b27b48b900c83301ab472d78da737dd849ec7e01e47303709216a00f9c239a25d7fa5cffeaa61ce8c9d39cd8464460c6c4871d3c10a216b948d742e31108609006235dd227b17dc13b22c19dd53a3b4772a38787da7038147f7985ab2a8d179a7a764ee622afc5cac5dabeb8f74a2f89ad33f068fe424095afc77887b20f8293c4a2602c55c7f68b34721dbdaa9d8f2cfc9f432da950280de4001cdd14d69feefc78a0bde24e640d77486f241df4e65111ec10d14f50ce10088560e20ee658cb12307ed00fd9384ac9af95c9c63dc68d6910b0710a5199f4330b5979787d8e5016f3e05ad5d99df2137d3e4acb3ca67496281caf8cd0d5fbeae433d2437797c7b6b83252a1402447eb36518626878b6db427325cd93299c621029e110ef289b105aa232596623c6b5d1a214e18ced1876f58c2874081afdd25d347f91346774ed90a67adb29ad608e8c57a845f6b206a7cd06f20dc929ebcaefa30abd527532dcc66013e6d0636acabe42d9b0f674cdca99e8f4410826c71671e8bcfb09be9b289db68b466b0fa0d80de336b42b45264bef3f198065205ca51860ff55aa8cf144a856e27b9aa7b8224af28a2c7ea03cc9db08453fd113cca1be27d3214dab1dbf8c4fd3cbf678538b6c4b97cbe84f0a1c2d7e7c9b5b24f2816a22f43bfa20898b00903c63eb30e1649e76e0d2bc69a5bebcaecac47703e81da072f839c554aec2c67d6d44cea31fa01d6812eeee1998b49bb4cd2d271339e8e774420af78a74d890d51b552179fe8a3e0d08d7ff0b0bc34e27a1ca99087e076ff6fd82bc8541c7cee2a585d77357ff968dff59cdf9cfc611c4a94de014b096d6d772838b9057f96d9a91f649dc2c7d4cbd887a66c12d0df2ad642bd51b112d95e3bf5ab6e289ae96d2a32f8639fb5d137c3d1533ef479e2ea8a394d21aa3a6515cb0b178ea8120bab41ef4cf05ea277117ba0a5e68ceb5925f4ff19d27b8d4b65b7270977ce60c3e419a9b48c56751c923baee6e6fd32516d6e42ef6130af9926885bd8fd5d9c2c184bfcad5b1671bde7f611362adbb2d0c4624d5a7035d11ee534c68b9bcf90825df832cc66f6698adb195f66d55a03f6305b7a0240d07332edd7aacb652b5411cef29829069432b2a69f3041306d48ec527c9cefd03358d6d5e694120bd0d7566bdd5e876f8db0e1face5fd0f67f8d4c2c28e315e12387ccaa191748f4cda25aeb646008a9bfd223934448ddba868c79c656693bf28cc75d56bd3f1683ae3d47c2d3888713eefc86849a12bca1617dd808a1bad851c3082cde00068be5035920b023a4b7356c3ec724b3d2991f524eefa9a3bbd681fe33f8d98e4d98368e110874eb40ba221c31386db5eee28d9c35bc79a45e5c31a33cf3755a386aabba274a397ecc71421e83c871747e7223f12276091f94c4100b633ed858b8e6554aba494c3f262eda4b997a3c65ef6e48f404dfa8628e2060cb15289361c0a0e1b78f25efb7e6f3cee056cd8653f11fe91bec67f9a1ba50129664df9e7f07b4aec2f396f6cde12443f54f12a87c2cf5182f3620fc1944c6d070b433d46367e191b9bf40eef28b673875103abf917a76019cf7bba4da7762126eccd7100479fc88688e129589197a0af4c7b9ef86fe2480692f5f6dc52534a1d62dc541680650e594af57d0903209fb1952dd9aeab56e182d68b662852e36a150131f285f1648db0d2d85128255b8dff03113bc84bd8a1582702c3a51cc8fd0082e0b52e8df94612b14bc2afb9f76f575a60d3c9d50fc277988d94997a5ddb26a696f75adf15d5934d9edad81c9bfe073ff12f2bad78b10ae4a1629516a07500000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002037f638c9ab695c3fc340ab91c29ea6e1f2f143b82ea9ac5ecfb71b5fbfe4324213eef8b9f689e4cc1c06dd04cd5f184bec3c120d398b8b73c31448b7511d13a"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
+              "key": "ledger_key_contract_instance",
+              "durability": "persistent",
+              "val": {
+                "contract_instance": {
+                  "executable": {
+                    "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                  },
+                  "storage": [
+                    {
+                      "key": {
+                        "symbol": "feed"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "groot"
+                      },
+                      "val": {
+                        "bytes": "9999999999999999999999999999999999999999999999999999999999999999"
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "nrounds"
+                      },
+                      "val": {
+                        "u32": 24
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "order"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "u32": 0
+                          },
+                          {
+                            "u32": 1
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "players"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "map": [
+                              {
+                                "key": {
+                                  "symbol": "address"
+                                },
+                                "val": {
+                                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "hidden_commitment"
+                                },
+                                "val": {
+                                  "bytes": "1d6f19190cc89b3c12f535595ec4ca35450fa4ebe687ce942212df15c216a662"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "public_node"
+                                },
+                                "val": "void"
+                              },
+                              {
+                                "key": {
+                                  "symbol": "role"
+                                },
+                                "val": {
+                                  "symbol": "phantom"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "ticket_bus"
+                                },
+                                "val": {
+                                  "u32": 1
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "ticket_rail"
+                                },
+                                "val": {
+                                  "u32": 1
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "ticket_taxi"
+                                },
+                                "val": {
+                                  "u32": 1
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "map": [
+                              {
+                                "key": {
+                                  "symbol": "address"
+                                },
+                                "val": {
+                                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "hidden_commitment"
+                                },
+                                "val": "void"
+                              },
+                              {
+                                "key": {
+                                  "symbol": "public_node"
+                                },
+                                "val": {
+                                  "u32": 10
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "role"
+                                },
+                                "val": {
+                                  "symbol": "investigator"
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "ticket_bus"
+                                },
+                                "val": {
+                                  "u32": 1
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "ticket_rail"
+                                },
+                                "val": {
+                                  "u32": 1
+                                }
+                              },
+                              {
+                                "key": {
+                                  "symbol": "ticket_taxi"
+                                },
+                                "val": {
+                                  "u32": 1
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "revlog"
+                      },
+                      "val": {
+                        "vec": []
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "round"
+                      },
+                      "val": {
+                        "u32": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "rrounds"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "u32": 3
+                          },
+                          {
+                            "u32": 8
+                          },
+                          {
+                            "u32": 13
+                          },
+                          {
+                            "u32": 18
+                          },
+                          {
+                            "u32": 24
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "status"
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "symbol": "Active"
+                          }
+                        ]
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "turnidx"
+                      },
+                      "val": {
+                        "u32": 0
+                      }
+                    },
+                    {
+                      "key": {
+                        "symbol": "verifier"
+                      },
+                      "val": {
+                        "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_code": {
+              "ext": "v0",
+              "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "code": ""
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 4095
+      }
+    ]
+  },
+  "events": []
+}

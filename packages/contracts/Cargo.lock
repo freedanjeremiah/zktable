@@ -1435,6 +1435,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "soroban-poseidon"
+version = "26.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cae04db4ef0b9079ca7ce23bab0e859222ec6a0e9b81480770524475eef91746"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "soroban-sdk"
 version = "26.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1906,6 +1915,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "zktable-referee"
+version = "0.1.0"
+dependencies = [
+ "soroban-env-host",
+ "soroban-poseidon",
+ "soroban-sdk",
+ "ultrahonk_soroban_verifier",
+ "zktable-verifier",
 ]
 
 [[package]]
