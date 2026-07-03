@@ -429,3 +429,122 @@ describe('determinism', () => {
 })
 
 type PlayerId = string
+
+// --- turn.eliminated: skip hook -----------------------------------------
+
+/**
+ * N-player elimination fixture: `zap` knocks a target out (recorded in the
+ * game's OWN public state — the engine holds no elimination state), `pass`
+ * does nothing. `endWhenOneLeft` controls whether end() declares the last
+ * active seat the winner (normal) or never ends (used to prove the engine
+ * throws instead of spinning).
+ */
+function eliminationGame(endWhenOneLeft: boolean) {
+  const activeIds = (state: { public: Record<string, unknown> }) => {
+    const eliminated = state.public.eliminated as string[]
+    return (state.public.roster as string[]).filter((id) => !eliminated.includes(id))
+  }
+  return defineGame({
+    name: 'elimination',
+    players: { min: 2, max: 6 },
+    state: {
+      public: (ctx) => ({ eliminated: [] as string[], roster: ctx.players.map((p) => p.id) }),
+    },
+    turn: {
+      order: 'clockwise',
+      eliminated: (state, id) => (state.public.eliminated as string[]).includes(id),
+      moves: {
+        zap: {
+          legal: (view) => {
+            const eliminated = view.public.eliminated as string[]
+            return (view.public.roster as string[])
+              .filter((id) => id !== view.self.id && !eliminated.includes(id))
+              .map((target) => ({ type: 'zap', target }))
+          },
+          apply: (state, move) => ({
+            ...state,
+            public: {
+              ...state.public,
+              eliminated: [...(state.public.eliminated as string[]), move.target as string],
+            },
+          }),
+        },
+        pass: {
+          legal: () => [{ type: 'pass' }],
+          apply: (state) => state,
+        },
+      },
+    },
+    end: (state) => {
+      if (!endWhenOneLeft) return null
+      const active = activeIds(state)
+      return active.length === 1 ? { winner: active[0]! } : null
+    },
+  })
+}
+
+const roster4 = [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }, { id: 'p4' }]
+
+describe('turn.eliminated — skipping eliminated seats', () => {
+  it('skips an eliminated seat when advancing the turn', () => {
+    const match = createMatch(eliminationGame(true), roster4)
+    match.submit('p1', { type: 'zap', target: 'p2' })
+    expect(match.state.turn.current).toBe('p3')
+  })
+
+  it('skips consecutive eliminated seats', () => {
+    const match = createMatch(eliminationGame(true), roster4)
+    match.submit('p1', { type: 'zap', target: 'p2' })
+    match.submit('p3', { type: 'zap', target: 'p4' })
+    // p4 (eliminated) and the wrap back to p1: p3 -> p1 directly.
+    expect(match.state.turn.current).toBe('p1')
+  })
+
+  it('still increments round when the wrap crosses skipped seats', () => {
+    const match = createMatch(eliminationGame(true), roster4)
+    match.submit('p1', { type: 'zap', target: 'p4' })
+    match.submit('p2', { type: 'pass' })
+    expect(match.state.turn.round).toBe(0)
+    // p3 -> (p4 skipped, wrap crosses top of order) -> p1: round increments.
+    match.submit('p3', { type: 'pass' })
+    expect(match.state.turn.current).toBe('p1')
+    expect(match.state.turn.round).toBe(1)
+  })
+
+  it('returns no legal moves for an eliminated player', () => {
+    const match = createMatch(eliminationGame(true), roster4)
+    match.submit('p1', { type: 'zap', target: 'p2' })
+    expect(match.legalMoves('p2')).toEqual([])
+  })
+
+  it('declares the winner (via end()) when the field drops to one', () => {
+    const match = createMatch(eliminationGame(true), [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }])
+    match.submit('p1', { type: 'zap', target: 'p2' })
+    match.submit('p3', { type: 'zap', target: 'p1' })
+    expect(match.state.status).toBe('finished')
+    expect(match.state.outcome).toEqual({ winner: 'p3' })
+  })
+
+  it('throws when all but one player are eliminated and end() returns null', () => {
+    const match = createMatch(eliminationGame(false), [{ id: 'p1' }, { id: 'p2' }])
+    expect(() => match.submit('p1', { type: 'zap', target: 'p2' })).toThrow(/end\(\) returned null/)
+  })
+})
+
+describe('defineGame — turn.eliminated validation', () => {
+  it('rejects a non-function turn.eliminated', () => {
+    expect(() =>
+      defineGame({
+        name: 'bad',
+        players: { min: 2, max: 2 },
+        state: { public: () => ({}) },
+        turn: {
+          order: 'clockwise',
+          eliminated: 'nope' as unknown as (s: never, p: never) => boolean,
+          moves: { pass: { legal: () => [{ type: 'pass' }], apply: (s) => s } },
+        },
+        end: () => null,
+      }),
+    ).toThrow(/turn\.eliminated/)
+  })
+})
