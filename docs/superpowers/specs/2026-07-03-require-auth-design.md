@@ -34,13 +34,15 @@ rejected.
 ### Contract changes (all three referees)
 
 **Seat → Address binding.**
-- `referee` (Blackout): `PlayerData.address` already exists. `join(addr, …)`
-  now calls `addr.require_auth()` so nobody can enroll an address they don't
-  control. Every per-seat mutating entry point (`set_hidden_start`,
-  `set_public_start`, `submit_hidden_move`, `submit_public_move`, `reveal`)
-  loads the seat's stored address and calls `require_auth()` on it before any
-  other check. `start()` stays permissionless (it only flips state when the
-  roster is complete — anyone may trigger it; add a doc comment saying so).
+- `referee` (Blackout): `PlayerData.address` already exists. `join` and
+  `start` stay **permissionless**: enrolling an address costs it nothing
+  (no stake, no obligation), and requiring the joining address's signature
+  would force a wallet prompt inside server-orchestrated match creation for
+  every human seat. The trust boundary is per-seat *actions*: every per-seat
+  mutating entry point (`set_hidden_start`, `set_public_start`,
+  `submit_hidden_move`, `submit_public_move`, `reveal`) loads the seat's
+  stored address and calls `require_auth()` on it before any other check.
+  (Who may claim a seat in an open lobby is an API-layer concern — M8.4.)
 - `liars-dice-referee` and `coup-referee`: constructor gains
   `players: Vec<Address>` (replacing bare `n_players: u32`; `n_players` is
   derived as `players.len()` and validated exactly as today). `PlayerData`
