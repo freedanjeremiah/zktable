@@ -13,7 +13,7 @@
     "test": "vitest run",
     "ensure-circuit-assets": "node scripts/copy-circuit-assets.mjs",
     "predev": "node scripts/copy-circuit-assets.mjs",
-    "prebuild": "node scripts/copy-circuit-assets.mjs"
+    "prebuild": "bash scripts/ensure-circuit-compiled.sh && node scripts/copy-circuit-assets.mjs"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",
