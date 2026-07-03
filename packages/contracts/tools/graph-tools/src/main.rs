@@ -41,6 +41,10 @@ const DICE_SIDES: u32 = 6;
 // player holds exactly 2 influence cards).
 const CARD_H: usize = 2;
 
+// valid_shuffle: deck size (3 copies x 5 characters, real Coup) matching the
+// circuit's `N`; the canonical pre-shuffle deck is CANONICAL[i] = i / 3.
+const DECK_N: usize = 15;
+
 // ---------- field helpers ----------
 
 fn be32(x: &BigUint) -> [u8; 32] {
@@ -387,6 +391,80 @@ fn main() {
                 "commitments": commitments.iter().map(hex).collect::<Vec<_>>(),
             });
             println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        }
+        "shuffle-witness" => {
+            // valid_shuffle (M8.3): derive the UNIQUE seed-forced permutation
+            // of the canonical 15-card deck and emit the circuit witness. The
+            // dealer has no input beyond the salts - the order is entirely
+            // determined by the (commit-reveal) seed. Must match the
+            // circuit's derivation bit-for-bit: sort source indices by the
+            // low 64 bits of Poseidon2(seed, j).
+            let seed = arg_big(&env, &flags, "seed");
+            let salts = parse_big_list(&env, &arg(&flags, "salts"));
+            assert_eq!(salts.len(), DECK_N, "--salts must list exactly {DECK_N} values");
+
+            let two64 = BigUint::from(1u128 << 64);
+            let mut keyed: Vec<(BigUint, usize)> = (0..DECK_N)
+                .map(|j| {
+                    let k = hash2(&env, &seed, &BigUint::from(j as u64));
+                    (k % &two64, j)
+                })
+                .collect();
+            keyed.sort();
+            let perm: Vec<usize> = keyed.iter().map(|(_, j)| *j).collect();
+
+            let canonical = |src: usize| BigUint::from((src / 3) as u64);
+            let cards: Vec<BigUint> = perm.iter().map(|&src| canonical(src)).collect();
+            let leaves: Vec<BigUint> = cards
+                .iter()
+                .zip(salts.iter())
+                .map(|(c, s)| hash2(&env, c, s))
+                .collect();
+
+            // Prover.toml (decimal Field strings; perm as u32 strings).
+            let mut toml = String::new();
+            toml.push_str(&format!("seed = \"{}\"\n", seed));
+            toml.push_str(&toml_list("leaf", &leaves.iter().map(|v| v.to_string()).collect::<Vec<_>>()));
+            toml.push_str(&toml_list("perm", &perm.iter().map(|v| v.to_string()).collect::<Vec<_>>()));
+            toml.push_str(&toml_list("salt", &salts.iter().map(|v| v.to_string()).collect::<Vec<_>>()));
+            if let Some(prover) = arg_opt(&flags, "prover") {
+                std::fs::write(prover, &toml).expect("write Prover.toml");
+            }
+
+            // public_inputs blob = seed | leaf_0 | .. | leaf_14 (16*32 bytes),
+            // the exact circuit public-input order (`main`'s parameter order:
+            // seed, leaf[15]).
+            let mut pub_blob = Vec::with_capacity(32 * (1 + DECK_N));
+            pub_blob.extend_from_slice(&be32(&seed));
+            for l in &leaves {
+                pub_blob.extend_from_slice(&be32(l));
+            }
+            let pub_hex = {
+                let mut s = String::from("0x");
+                for b in &pub_blob {
+                    s.push_str(&format!("{:02x}", b));
+                }
+                s
+            };
+            let json = serde_json::json!({
+                "seed": hex(&seed),
+                "perm": perm,
+                "cards": cards.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
+                "salts": salts.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                "leaves": leaves.iter().map(hex).collect::<Vec<_>>(),
+                "public_inputs": pub_hex,
+            });
+            let json_str = serde_json::to_string_pretty(&json).unwrap();
+            if let Some(path) = arg_opt(&flags, "json") {
+                std::fs::write(path, &json_str).expect("write json");
+            } else {
+                println!("{json_str}");
+            }
+            eprintln!(
+                "shuffle witness: seed={} deck(cards by position)={:?}",
+                hex(&seed),
+                cards.iter().map(|c| c.to_string()).collect::<Vec<_>>()
+            );
         }
         "card-witness" => {
             let claimed = arg_big(&env, &flags, "claimed");

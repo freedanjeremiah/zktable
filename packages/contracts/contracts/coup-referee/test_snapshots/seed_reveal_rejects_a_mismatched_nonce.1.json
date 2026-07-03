@@ -23,6 +23,7 @@
         }
       ]
     ],
+    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
@@ -52,24 +53,7 @@
           "sub_invocations": []
         }
       ]
-    ],
-    [
-      [
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
-        {
-          "function": {
-            "contract_fn": {
-              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
-              "function_name": "",
-              "args": []
-            }
-          },
-          "sub_invocations": []
-        }
-      ]
-    ],
-    [],
-    []
+    ]
   ],
   "ledger": {
     "protocol_version": 26,
@@ -194,26 +178,6 @@
               "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
               "key": {
                 "ledger_key_nonce": {
-                  "nonce": "4837995959683129791"
-                }
-              },
-              "durability": "temporary",
-              "val": "void"
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 6311999
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4",
-              "key": {
-                "ledger_key_nonce": {
                   "nonce": "5541220902715666415"
                 }
               },
@@ -242,60 +206,6 @@
                   "storage": [
                     {
                       "key": {
-                        "symbol": "deck"
-                      },
-                      "val": {
-                        "vec": [
-                          {
-                            "bytes": "0a0c36d4f2ac97656a7b6e64203cbf6e65671702c0081f1679a1ee4d3759756a"
-                          },
-                          {
-                            "bytes": "28dcd402f6275aa364133612c8bd2c1e0d3228f3d69801299dffd3397a8d8e70"
-                          },
-                          {
-                            "bytes": "058db2f72ea17b99c5a08b2cbbf959387d8a5913b08b6de57ce990111d54febd"
-                          },
-                          {
-                            "bytes": "0a8bc192983ae27cc74c814761ee7adff204c8eb1b49f693d8a7aad931759856"
-                          },
-                          {
-                            "bytes": "270a23cedc6ded18cd8a4f3099907651bdbb934704d2736cf35b1425466a4538"
-                          },
-                          {
-                            "bytes": "262d962ee5bc53d49e152a600054a539d39305aff7db743351392e09536da14d"
-                          },
-                          {
-                            "bytes": "2bd33700863cc52111edbd5651a2e01658afdddda945f51e6371e73494fb70c3"
-                          },
-                          {
-                            "bytes": "1f1b69af6ec19060d76df30d626b587a651ca0b5b8b5a3440edaad9a6cfaf32b"
-                          },
-                          {
-                            "bytes": "1d79a6685716d64caea5d296564dd8126d52cfcf775d3ac7f88822b029494902"
-                          },
-                          {
-                            "bytes": "04af11ef51bba8fb00b0672de9121f153ccd59d55f3ae423a313da5cb8a5844b"
-                          },
-                          {
-                            "bytes": "0066517eb055b7ed9486050f612cbfb96a658dd92ab12deaff7af22a0e059720"
-                          },
-                          {
-                            "bytes": "2f716a9618365c1b12aea5ad5230e8ecc0b6b968d2e4d44fc50a4c58909747c9"
-                          },
-                          {
-                            "bytes": "2e32a8db108cf846a021d905791fe7030d3d9c247c534d46a72ba019cc1973b0"
-                          },
-                          {
-                            "bytes": "224c4fea42e0ebb1c5d5de8e9ff6dbf7506a9a5cea16ff14ac178d6a0c26af28"
-                          },
-                          {
-                            "bytes": "20768bf825eecf65d979d0c6051c1a2b945f5e478015f20ad5a11a2a89ed3322"
-                          }
-                        ]
-                      }
-                    },
-                    {
-                      "key": {
                         "symbol": "nplayers"
                       },
                       "val": {
@@ -309,7 +219,7 @@
                       "val": {
                         "vec": [
                           {
-                            "symbol": "Playing"
+                            "symbol": "SeedReveal"
                           }
                         ]
                       }
@@ -343,14 +253,7 @@
                                   "symbol": "commitments"
                                 },
                                 "val": {
-                                  "vec": [
-                                    {
-                                      "bytes": "0a0c36d4f2ac97656a7b6e64203cbf6e65671702c0081f1679a1ee4d3759756a"
-                                    },
-                                    {
-                                      "bytes": "28dcd402f6275aa364133612c8bd2c1e0d3228f3d69801299dffd3397a8d8e70"
-                                    }
-                                  ]
+                                  "vec": []
                                 }
                               },
                               {
@@ -358,14 +261,7 @@
                                   "symbol": "dead"
                                 },
                                 "val": {
-                                  "vec": [
-                                    {
-                                      "bool": false
-                                    },
-                                    {
-                                      "bool": false
-                                    }
-                                  ]
+                                  "vec": []
                                 }
                               },
                               {
@@ -380,9 +276,7 @@
                                 "key": {
                                   "symbol": "nonce"
                                 },
-                                "val": {
-                                  "bytes": "00000000000000000000000000000000000000000000000000000000000bdb29"
-                                }
+                                "val": "void"
                               },
                               {
                                 "key": {
@@ -417,14 +311,7 @@
                                   "symbol": "commitments"
                                 },
                                 "val": {
-                                  "vec": [
-                                    {
-                                      "bytes": "058db2f72ea17b99c5a08b2cbbf959387d8a5913b08b6de57ce990111d54febd"
-                                    },
-                                    {
-                                      "bytes": "0a8bc192983ae27cc74c814761ee7adff204c8eb1b49f693d8a7aad931759856"
-                                    }
-                                  ]
+                                  "vec": []
                                 }
                               },
                               {
@@ -432,14 +319,7 @@
                                   "symbol": "dead"
                                 },
                                 "val": {
-                                  "vec": [
-                                    {
-                                      "bool": false
-                                    },
-                                    {
-                                      "bool": false
-                                    }
-                                  ]
+                                  "vec": []
                                 }
                               },
                               {
@@ -454,9 +334,7 @@
                                 "key": {
                                   "symbol": "nonce"
                                 },
-                                "val": {
-                                  "bytes": "00000000000000000000000000000000000000000000000000000000000d8cc2"
-                                }
+                                "val": "void"
                               },
                               {
                                 "key": {
@@ -469,14 +347,6 @@
                             ]
                           }
                         ]
-                      }
-                    },
-                    {
-                      "key": {
-                        "symbol": "seed"
-                      },
-                      "val": {
-                        "bytes": "2dabe9b6972bc1f021a8a6e14586631d4ea9a4802712a94c07626ff70325f309"
                       }
                     },
                     {
