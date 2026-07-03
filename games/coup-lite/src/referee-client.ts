@@ -30,6 +30,10 @@ const REFEREE_ERROR_NAMES: Record<number, string> = {
   16: 'SlotAlreadyRevealed',
   17: 'BadSlotIndex',
   18: 'CardRevealMismatch',
+  19: 'AlreadyCommitted',
+  20: 'NonceRevealMismatch',
+  21: 'AlreadyNonceRevealed',
+  22: 'NotFullyCommitted',
 }
 
 export class RefereeCliError extends Error {
@@ -52,9 +56,18 @@ export class RefereeCliError extends Error {
   }
 }
 
-export type Phase = 'Deal' | 'Playing' | 'AwaitingResponse' | 'AwaitingReveal' | 'Finished'
+export type Phase =
+  | 'SeedCommit'
+  | 'SeedReveal'
+  | 'Shuffle'
+  | 'Playing'
+  | 'AwaitingResponse'
+  | 'AwaitingReveal'
+  | 'Finished'
 
 export type ChainPlayer = {
+  seed_committed: boolean
+  seed_revealed: boolean
   dealt: boolean
   commitments: string[]
   dead: boolean[]
@@ -65,6 +78,8 @@ export type ChainPlayer = {
 export type ChainGameState = {
   phase: Phase
   n_players: number
+  seed: string | null
+  deck: string[]
   players: ChainPlayer[]
   turn: number
   last_claim_player: number | null
@@ -130,24 +145,50 @@ export class CliRefereeClient {
   /**
    * `stellar contract deploy` for the coup referee. Returns the deployed
    * contract id. `playerAddresses[i]` becomes seat i's owner — every seat-i
-   * action must then be signed by that address (require_auth).
+   * action must then be signed by that address (require_auth). `verifier`
+   * holds the `card_membership` VK; `shuffleVerifier` the `valid_shuffle`
+   * VK (M8.3).
    */
-  async deployReferee(wasmPath: string, opts: { verifier: string; playerAddresses: string[] }): Promise<string> {
+  async deployReferee(
+    wasmPath: string,
+    opts: { verifier: string; shuffleVerifier: string; playerAddresses: string[] },
+  ): Promise<string> {
     const stdout = await this.runDeploy(wasmPath, [
       '--verifier',
       opts.verifier,
+      '--shuffle_verifier',
+      opts.shuffleVerifier,
       '--players',
       JSON.stringify(opts.playerAddresses),
     ])
     return stdout.trim()
   }
 
-  async deal(refereeId: string, opts: { player: number; commitmentsHex: string[] }): Promise<void> {
+  async commitSeedNonce(refereeId: string, opts: { player: number; commitmentHex: string }): Promise<void> {
     await this.invoke(
       refereeId,
-      ['deal', '--player', String(opts.player), '--commitments', JSON.stringify(opts.commitmentsHex.map(stripHexPrefix))],
+      ['commit_seed_nonce', '--player', String(opts.player), '--nonce_commitment', stripHexPrefix(opts.commitmentHex)],
       opts.player,
     )
+  }
+
+  async revealSeedNonce(refereeId: string, opts: { player: number; nonceHex: string }): Promise<void> {
+    await this.invoke(
+      refereeId,
+      ['reveal_seed_nonce', '--player', String(opts.player), '--nonce', stripHexPrefix(opts.nonceHex)],
+      opts.player,
+    )
+  }
+
+  /** Submits the 15 shuffle-proven deck leaves + the `valid_shuffle` proof (permissionless — the proof is the trust anchor). */
+  async submitShuffle(refereeId: string, opts: { leavesHex: string[]; proofHex: string }): Promise<void> {
+    await this.invoke(refereeId, [
+      'submit_shuffle',
+      '--leaves',
+      JSON.stringify(opts.leavesHex.map(stripHexPrefix)),
+      '--proof',
+      stripHexPrefix(opts.proofHex),
+    ])
   }
 
   async claim(refereeId: string, opts: { player: number; character: number }): Promise<void> {

@@ -14,6 +14,7 @@ import type { CoupLiteConfig, Hand, ClaimEntry } from './coup-lite.js'
 import { CardProver } from './card-prover.js'
 import {
   DEFAULT_COUP_REFEREE_WASM,
+  DEFAULT_SHUFFLE_VK_PATH,
   DEFAULT_VERIFIER_WASM,
   DEFAULT_VK_PATH,
   CARD_MEMBERSHIP_CIRCUIT_DIR,
@@ -82,6 +83,7 @@ export type PlayCoupLiteOptions = {
   verifierWasmPath?: string
   refereeWasmPath?: string
   vkPath?: string
+  shuffleVkPath?: string
   log?: (line: string) => void
   /**
    * When true, provisions one funded testnet identity per seat
@@ -180,6 +182,8 @@ export async function playCoupLite(opts: PlayCoupLiteOptions = {}): Promise<Tran
   const prover = new CardProver({ circuitDir: CARD_MEMBERSHIP_CIRCUIT_DIR })
   log('ensuring card_membership circuit is compiled + VK is built…')
   await prover.ensureVk()
+  log('ensuring valid_shuffle circuit is compiled + VK is built…')
+  await prover.ensureShuffleVk()
 
   const source = opts.source ?? 'alice'
   const seatNames = seatIdentityNames(source, nPlayers, opts.multiSeat ?? false)
@@ -195,40 +199,65 @@ export async function playCoupLite(opts: PlayCoupLiteOptions = {}): Promise<Tran
 
   log('reading card_membership verification key…')
   const vkHex = (await readFile(opts.vkPath ?? DEFAULT_VK_PATH)).toString('hex')
+  log('reading valid_shuffle verification key…')
+  const shuffleVkHex = (await readFile(opts.shuffleVkPath ?? DEFAULT_SHUFFLE_VK_PATH)).toString('hex')
 
   log('deploying card_membership verifier…')
   const verifierContractId = await client.deployVerifier(opts.verifierWasmPath ?? DEFAULT_VERIFIER_WASM, vkHex)
   log(`  verifier: ${verifierContractId}`)
+  log('deploying valid_shuffle verifier…')
+  const shuffleVerifierContractId = await client.deployVerifier(
+    opts.verifierWasmPath ?? DEFAULT_VERIFIER_WASM,
+    shuffleVkHex,
+  )
+  log(`  shuffle verifier: ${shuffleVerifierContractId}`)
 
   log(`deploying coup-referee (seats=[${seatNames.join(', ')}])…`)
   const refereeContractId = await client.deployReferee(opts.refereeWasmPath ?? DEFAULT_COUP_REFEREE_WASM, {
     verifier: verifierContractId,
+    shuffleVerifier: shuffleVerifierContractId,
     playerAddresses,
   })
   log(`  referee: ${refereeContractId}`)
 
-  // --- deal phase: a semi-honest orchestrator (this runner) deals each
-  //     player a real, distinct 2-character hand + commitments -----------
+  // --- seed phase (M8.3): sealed commit-reveal -> joint seed ----------------
+  const nonces = roster.map(() => randomField())
+  for (let i = 0; i < roster.length; i++) {
+    log(`player ${i}: committing seed nonce (hash2(nonce, 0))…`)
+    const commitmentHex = await prover.commit(nonces[i]!, 0n)
+    await client.commitSeedNonce(refereeContractId, { player: i, commitmentHex })
+  }
+  for (let i = 0; i < roster.length; i++) {
+    log(`player ${i}: revealing seed nonce…`)
+    await client.revealSeedNonce(refereeContractId, { player: i, nonceHex: toBe32Hex(nonces[i]!) })
+  }
+  const seedHex = await prover.seed(nonces)
+  const onChainSeed = (await client.gameState(refereeContractId)).seed
+  if (onChainSeed && onChainSeed.replace(/^0x/, '') !== seedHex.replace(/^0x/, '')) {
+    throw new Error(`playCoupLite: locally-recomputed seed ${seedHex} != on-chain seed ${onChainSeed}`)
+  }
+  log(`joint seed: ${seedHex}`)
+
+  // --- shuffle phase (M8.3): prove the seed-forced deck; hands by position ---
+  const deckSalts = Array.from({ length: 15 }, () => randomField())
+  log('proving valid_shuffle (real UltraHonk proof - the seed forces the order)…')
+  const shuffle = await prover.proveShuffle(seedHex, deckSalts)
+  log('submitting submit_shuffle (ZK-verified on-chain; hands = deck positions)…')
+  await client.submitShuffle(refereeContractId, {
+    leavesHex: shuffle.leavesHex,
+    proofHex: Buffer.from(shuffle.proof).toString('hex'),
+  })
+
   const handsByPlayer: Record<PlayerId, Hand> = {}
   const saltsByPlayer: Record<PlayerId, [bigint, bigint]> = {}
   const deadByPlayer: Record<PlayerId, [boolean, boolean]> = {}
   for (let i = 0; i < roster.length; i++) {
     const playerId = roster[i]!.id
-    // Distinct characters from the 5-character pool, deterministic per seed.
-    const pool = [0, 1, 2, 3, 4]
-    const i0 = Math.floor((hashOf(`${seed}:${playerId}:c0`) % pool.length))
-    const c0 = pool.splice(i0, 1)[0]!
-    const i1 = Math.floor(hashOf(`${seed}:${playerId}:c1`) % pool.length)
-    const c1 = pool.splice(i1, 1)[0]!
-    const hand: Hand = [c0, c1]
-    const salts: [bigint, bigint] = [randomField(), randomField()]
+    const hand: Hand = [shuffle.cards[2 * i]!, shuffle.cards[2 * i + 1]!]
     handsByPlayer[playerId] = hand
-    saltsByPlayer[playerId] = salts
+    saltsByPlayer[playerId] = [BigInt(shuffle.salts[2 * i]!), BigInt(shuffle.salts[2 * i + 1]!)]
     deadByPlayer[playerId] = [false, false]
-
-    log(`player ${i}: dealing hand [${hand.join(', ')}] (${hand.map((c) => CHARACTER_NAMES[c]).join(', ')})…`)
-    const dealt = await prover.deal([BigInt(hand[0]), BigInt(hand[1])], salts)
-    await client.deal(refereeContractId, { player: i, commitmentsHex: dealt.commitmentsHex })
+    log(`player ${i}: shuffled hand [${hand.join(', ')}] (${hand.map((c) => CHARACTER_NAMES[c]).join(', ')})`)
   }
 
   // --- local mirror, seeded with the REAL dealt hands ------------------------
@@ -333,12 +362,3 @@ export async function playCoupLite(opts: PlayCoupLiteOptions = {}): Promise<Tran
   }
 }
 
-/** Small deterministic (non-cryptographic) hash used only to pick dealt hands - NOT the seed used for on-chain fairness (there is none here: v1 dealing is semi-honest, see the module doc). */
-function hashOf(s: string): number {
-  let h = 0x811c9dc5
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i)
-    h = Math.imul(h, 0x01000193)
-  }
-  return h >>> 0
-}

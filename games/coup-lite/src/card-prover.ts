@@ -22,6 +22,7 @@ import {
   DEFAULT_BB_BIN,
   DEFAULT_NARGO_BIN,
   GRAPH_TOOLS_BIN,
+  VALID_SHUFFLE_CIRCUIT_DIR,
   toolEnv,
 } from './paths.js'
 
@@ -50,6 +51,28 @@ export type CardProof = {
   commitmentsHex: [string, string]
 }
 
+type ShuffleWitnessJson = {
+  seed: string
+  perm: number[]
+  cards: string[]
+  salts: string[]
+  leaves: string[]
+  public_inputs: string
+}
+
+/** The seed-forced shuffled deck plus its `valid_shuffle` proof (M8.3). */
+export type ShuffleProof = {
+  proof: Uint8Array
+  publicInputs: Uint8Array
+  seedHex: string
+  /** Card value (0-4) at each of the 15 deck positions — dealer-visible only. */
+  cards: number[]
+  /** Salt (decimal string) at each deck position. */
+  salts: string[]
+  /** Poseidon2(card, salt) leaf commitment (hex) at each deck position. */
+  leavesHex: string[]
+}
+
 async function exists(p: string): Promise<boolean> {
   try {
     await access(p)
@@ -61,6 +84,7 @@ async function exists(p: string): Promise<boolean> {
 
 export type CardProverOptions = {
   circuitDir?: string
+  shuffleCircuitDir?: string
   graphToolsBin?: string
   nargoBin?: string
   bbBin?: string
@@ -69,6 +93,7 @@ export type CardProverOptions = {
 
 export class CardProver {
   private readonly circuitDir: string
+  private readonly shuffleCircuitDir: string
   private readonly graphToolsBin: string
   private readonly nargoBin: string
   private readonly bbBin: string
@@ -77,6 +102,7 @@ export class CardProver {
 
   constructor(opts: CardProverOptions = {}) {
     this.circuitDir = opts.circuitDir ?? CARD_MEMBERSHIP_CIRCUIT_DIR
+    this.shuffleCircuitDir = opts.shuffleCircuitDir ?? VALID_SHUFFLE_CIRCUIT_DIR
     this.graphToolsBin = opts.graphToolsBin ?? GRAPH_TOOLS_BIN
     this.nargoBin = opts.nargoBin ?? DEFAULT_NARGO_BIN
     this.bbBin = opts.bbBin ?? DEFAULT_BB_BIN
@@ -93,6 +119,15 @@ export class CardProver {
   private get vkPath(): string {
     return path.join(this.targetDir, 'vk')
   }
+  private get shuffleTargetDir(): string {
+    return path.join(this.shuffleCircuitDir, 'target')
+  }
+  private get shuffleBytecodePath(): string {
+    return path.join(this.shuffleTargetDir, 'valid_shuffle.json')
+  }
+  private get shuffleVkPath(): string {
+    return path.join(this.shuffleTargetDir, 'vk')
+  }
 
   /** Compile the circuit once if `target/card_membership.json` is missing. */
   async ensureCompiled(): Promise<void> {
@@ -104,6 +139,23 @@ export class CardProver {
   async ensureVk(): Promise<void> {
     await this.ensureCompiled()
     if (await exists(this.vkPath)) return
+    await this.writeVk(this.bytecodePath, this.targetDir)
+  }
+
+  /** Compile `valid_shuffle` once if its bytecode is missing. */
+  async ensureShuffleCompiled(): Promise<void> {
+    if (await exists(this.shuffleBytecodePath)) return
+    await execFileAsync(this.nargoBin, ['compile'], { cwd: this.shuffleCircuitDir, env: this.env })
+  }
+
+  /** Generate the `valid_shuffle` verification key once if missing. */
+  async ensureShuffleVk(): Promise<void> {
+    await this.ensureShuffleCompiled()
+    if (await exists(this.shuffleVkPath)) return
+    await this.writeVk(this.shuffleBytecodePath, this.shuffleTargetDir)
+  }
+
+  private async writeVk(bytecodePath: string, outputDir: string): Promise<void> {
     await execFileAsync(
       this.bbBin,
       [
@@ -113,14 +165,122 @@ export class CardProver {
         '--oracle_hash',
         'keccak',
         '--bytecode_path',
-        this.bytecodePath,
+        bytecodePath,
         '--output_path',
-        this.targetDir,
+        outputDir,
         '--output_format',
         'bytes_and_fields',
       ],
       { env: this.env },
     )
+    // bb sometimes writes `vk` as a directory containing a `vk` file —
+    // normalize to a flat file (same fixup scripts/build_all.sh performs).
+    const vkPath = path.join(outputDir, 'vk')
+    const { stat, rename, rmdir } = await import('node:fs/promises')
+    const s = await stat(vkPath)
+    if (s.isDirectory()) {
+      await rename(path.join(vkPath, 'vk'), `${vkPath}.tmp`)
+      await rmdir(vkPath)
+      await rename(`${vkPath}.tmp`, vkPath)
+    }
+  }
+
+  /**
+   * Poseidon2(value, salt) via `zktable-graph commit` — used for the seed
+   * commit-reveal nonces (`hash2(nonce, 0)`), byte-identical to the referee.
+   */
+  async commit(value: bigint, salt: bigint): Promise<string> {
+    const { stdout } = await execFileAsync(
+      this.graphToolsBin,
+      ['commit', '--value', value.toString(), '--salt', salt.toString()],
+      { env: this.env },
+    )
+    return stdout.trim()
+  }
+
+  /** The joint commit-reveal seed: left-fold of hash2 over the nonces (player-index order). */
+  async seed(nonces: bigint[]): Promise<string> {
+    const { stdout } = await execFileAsync(
+      this.graphToolsBin,
+      ['seed', '--nonces', nonces.join(',')],
+      { env: this.env },
+    )
+    return stdout.trim()
+  }
+
+  /**
+   * Full `valid_shuffle` pipeline (M8.3): derive the UNIQUE seed-forced
+   * permutation of the canonical 15-card deck via `zktable-graph
+   * shuffle-witness`, then `nargo execute` -> `bb prove`. The returned
+   * `cards`/`salts` are the dealer's private view (handed to each player
+   * off-chain); `leavesHex` + `proof` go on-chain via `submit_shuffle`.
+   */
+  async proveShuffle(seedHex: string, salts: bigint[]): Promise<ShuffleProof> {
+    if (salts.length !== 15) throw new Error('proveShuffle: exactly 15 salts required')
+    await this.ensureShuffleCompiled()
+
+    const dir = await mkdtemp(path.join(this.workDir, 'zktable-shuffle-prove-'))
+    try {
+      const proverTomlPath = path.join(dir, 'Prover')
+      const witnessJsonPath = path.join(dir, 'witness.json')
+      const witnessOutPath = path.join(dir, 'witness')
+
+      await execFileAsync(
+        this.graphToolsBin,
+        [
+          'shuffle-witness',
+          '--seed',
+          seedHex,
+          '--salts',
+          salts.join(','),
+          '--prover',
+          `${proverTomlPath}.toml`,
+          '--json',
+          witnessJsonPath,
+        ],
+        { env: this.env },
+      )
+
+      const witness = JSON.parse(await readFile(witnessJsonPath, 'utf8')) as ShuffleWitnessJson
+
+      await execFileAsync(this.nargoBin, ['execute', '--prover-name', proverTomlPath, witnessOutPath], {
+        cwd: this.shuffleCircuitDir,
+        env: this.env,
+      })
+
+      await execFileAsync(
+        this.bbBin,
+        [
+          'prove',
+          '--scheme',
+          'ultra_honk',
+          '--oracle_hash',
+          'keccak',
+          '--bytecode_path',
+          this.shuffleBytecodePath,
+          '--witness_path',
+          `${witnessOutPath}.gz`,
+          '--output_path',
+          dir,
+          '--output_format',
+          'bytes_and_fields',
+        ],
+        { env: this.env },
+      )
+
+      const proof = new Uint8Array(await readFile(path.join(dir, 'proof')))
+      const publicInputs = new Uint8Array(await readFile(path.join(dir, 'public_inputs')))
+      return {
+        proof,
+        publicInputs,
+        seedHex: witness.seed,
+        cards: witness.cards.map((c) => Number(c)),
+        salts: witness.salts,
+        leavesHex: witness.leaves,
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   }
 
   /**

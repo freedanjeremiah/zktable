@@ -1,11 +1,14 @@
 # zkTable — Engineering Handoff
 
-**Status:** Milestones M0–M7 of `PRD.md` are implemented and verified on **live
-Stellar testnet**. Nothing is mocked — every game runs a full match on-chain with
-real UltraHonk proofs. Full test suite green: **234 TypeScript tests + 84 Rust
-tests**, plus every circuit's `nargo test`.
+**Status:** Milestones M0–M8 are implemented and verified on **live Stellar
+testnet** (M8 = the first three post-M7 hardening workstreams: per-seat
+`require_auth`, engine turn-skip elimination + N-player games, and the
+`valid_shuffle` provably-fair deal). Nothing is mocked — every game runs a
+full match on-chain with real UltraHonk proofs. Full test suite green:
+**249 TypeScript tests + 92 Rust tests**, plus every circuit's `nargo test`.
 
-Branch: `zktable-build` (all work). Base: the original `PRD.md` commit on `main`.
+Branches: `zktable-build` (M0–M7), `zktable-m8` (M8). Specs for all five
+post-M7 workstreams: `docs/superpowers/specs/2026-07-03-*.md`.
 
 ---
 
@@ -123,12 +126,17 @@ LIARS_TESTNET=1     pnpm --filter @zktable/liars-dice play
 
 ## Suggested next steps
 
-1. Referee `require_auth()` + Freighter-signed investigator moves → fully
-   trustless multiplayer.
+1. ~~Referee `require_auth()` + Freighter-signed investigator moves~~ —
+   **done (M8.1)**, testnet-verified multi-identity runs for all three games.
 2. Browser proving via `bb.js` so a human can play the hidden role (Phantom).
-3. `valid_shuffle` circuit to remove the deck's semi-honest-deal assumption.
+   Spec: `docs/superpowers/specs/2026-07-03-browser-proving-design.md`.
+3. ~~`valid_shuffle` circuit~~ — **done (M8.3)**: seed-forced shuffle +
+   position-assigned hands; the dealer can no longer choose the deal (ADR 009).
 4. Durable match store (Redis/DB) + matchmaking for the web app.
-5. Multi-round elimination for Liar's Dice / Coup-lite (needs a core engine
-   turn-skip hook for eliminated players).
-
-Progress ledger with per-task commit hashes: `.superpowers/sdd/progress.md`.
+   Spec: `docs/superpowers/specs/2026-07-03-durable-store-design.md`.
+5. ~~Multi-round elimination / engine turn-skip hook~~ — **done (M8.2)**:
+   `turn.eliminated` in `@zktable/core`; Coup-lite 2–4p (3p on testnet),
+   Liar's Dice 2–6p locally (the liars CONTRACT still locks 2p — see
+   limitations §5 for the remaining contract workstream).
+6. Liar's Dice referee multi-round protocol (per-round `dice_valid`
+   re-rolls for survivors) to lift the contract's 2-player lock.

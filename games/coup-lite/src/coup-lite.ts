@@ -6,12 +6,13 @@
 // loses influence. Mirrors Liar's Dice's shape (`games/liars-dice/src/
 // liars-dice.ts`) as the SDK's third G1 showcase.
 //
-// HONEST SIMPLIFICATION (PRD §7.2, deck v1 — see the `card_membership`
-// circuit's and the `coup-referee` contract's module docs for the full
-// statement): hands are dealt by a semi-honest dealer/orchestrator, NOT a
-// ZK-proven valid shuffle (`valid_shuffle` is out of scope for v1). What IS
-// real and load-bearing: the `card_membership` proof genuinely proves a
-// claimed character sits in a player's committed hand, in zero knowledge.
+// PROVABLY FAIR DEAL (M8.3, deck v1.5 — see the `valid_shuffle` circuit's
+// and the `coup-referee` contract's module docs): on-chain, the deal is now
+// a seed-forced, ZK-proven shuffle of the canonical 15-card deck with hands
+// assigned by fixed deck position — the dealer cannot choose who gets what,
+// only learn it (the dealer still SEES the cards; hiding them too is
+// mental-poker/MPC, deck v2). The `card_membership` proof remains the
+// load-bearing "prove-hold-or-bluff" ZK during play.
 //
 // Local-mirror design note (same pattern as Liar's Dice's `diceByPlayer` —
 // see that file's module doc): `@zktable/core`'s `apply` reducers are pure
@@ -138,9 +139,11 @@ export const coupLite = defineGame({
   players: { min: MIN_PLAYERS, max: MAX_PLAYERS },
 
   components: {
-    // Public shared-deck declaration (the character pool); the actual deal is
-    // semi-honest v1 (see module doc) and each hand stays hidden per player.
+    // Public shared-deck declaration (the character pool). The shuffle marker
+    // is REAL on-chain as of M8.3: a seed-forced `valid_shuffle` proof with
+    // position-assigned hands (see module doc); each hand stays hidden.
     deck: zk.deck.of([...CHARACTER_NAMES]),
+    shuffle: zk.deck.shuffle(),
     hand: zk.deck.deal(HAND_SIZE),
   },
 

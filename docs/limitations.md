@@ -7,55 +7,47 @@ is the itemized, honest account of where it falls short of that, with
 pointers to the exact code and milestone reports so every claim here is
 checkable.
 
-## 1. `deck` v1 is a semi-honest committed deal, not full mental-poker
+## 1. `deck` v1.5: the deal is provably fair, but the dealer still sees the cards
 
-**What's real:** the `card_membership` Noir circuit
-(`packages/circuits/card_membership/src/main.nr`) genuinely proves, in zero
-knowledge, that a claimed character is one of the two cards in a player's
-already-committed hand — without revealing which slot or the other card's
-identity. This is load-bearing and proven on testnet: two real
-`card_membership` "prove-hold" proofs, verified cross-contract, in the M6.3
-Coup-lite on-chain run (`docs/milestones.md` M6.3).
+**What's real (M8.3):** the deal is no longer trusted. The `valid_shuffle`
+Noir circuit (`packages/circuits/valid_shuffle/src/main.nr`) proves the
+entire 15-card committed deck (3 copies × 5 characters, real Coup) is the
+canonical card set permuted by the UNIQUE order forced by an on-chain
+commit-reveal seed; the `coup-referee` rebuilds the proof's public inputs
+from its OWN stored seed and assigns hands by fixed deck position (player p
+= leaves 2p, 2p+1). The dealer cannot choose who gets what — only learn it.
+The `card_membership` "prove-hold" proof remains the load-bearing in-play
+ZK, unchanged. Both are proven on testnet (`docs/milestones.md` M6.3, M8.3).
 
-**What's not real:** nothing proves the *deal itself* came from a fair,
-unbiased shuffle over a shared, non-repeating deck. A designated
-dealer/orchestrator (`games/coup-lite/src/runner.ts` in the on-chain demo)
-supplies each player's commitments directly during the `Deal` phase.
-Achieving full mental-poker/coSNARK-grade dealing would need a
-`valid_shuffle` circuit (proving a permutation is a bijection over
-`[0, N)`, specified but not implemented — PRD §7.2) run by a shuffler whose
-honesty is itself distributed or provable. See
-`docs/adr/007-deck-v1-semi-honest-deal.md` for the full design rationale.
+**What's still not real:** card **privacy from the dealer**. The
+dealer/orchestrator generates the per-position salts and therefore sees
+every card as it deals them out to players off-chain. Hiding the cards from
+the dealer too is mental-poker/coSNARK territory (deck v2). See
+`docs/adr/007-deck-v1-semi-honest-deal.md` for the original v1 rationale
+this supersedes.
 
-**Practical impact:** trust a semi-honest dealer for Coup-lite's card
-distribution. Do not use `deck` v1 for anything where a colluding dealer
-matters (e.g. real-money card games).
+**Practical impact:** a colluding dealer can no longer stack the deck, but
+can still *peek* at hands. Fine for AI opponents driven by a `PlayerView`
+(they never see the dealer's data); not yet sufficient for adversarial
+real-money play.
 
-## 2. Referee contracts have no `require_auth()` yet
+## 2. Per-seat `require_auth()` is live; lobby-phase setup is API-gated
 
-Every referee shipped (`referee` for Blackout, `liars-dice-referee`,
-`coup-referee`) identifies players by seat index or a stored commitment, not
-by binding each move to the caller's Stellar `Address` via
-`require_auth()`. In every on-chain run to date, one funded wallet (`alice`)
-signs every transaction for every seat — documented explicitly in every
-milestone report (e.g. m3-report.md: "Single funded wallet `alice` ... for
-all seats (referee has no per-caller auth yet)").
+**Fixed in M8.1:** every per-seat in-game entry point of all three referees
+(`submit_hidden_move`/`submit_public_move`/`reveal`; `commit_nonce`/`bid`/
+`challenge`/`reveal_dice`/…; `commit_seed_nonce`/`claim`/`prove_hold`/…)
+now `require_auth()`s the seat's stored Stellar `Address`, fixed at
+`join`/construction. Multi-wallet play is demonstrated on testnet
+(`*_MULTISIG=1` runs — one funded identity per seat, wrong-signer attempts
+rejected; see `docs/milestones.md` M8.1). The web app supports
+Freighter-signed investigator moves via a prepare/sign/submit flow.
 
-**What this means concretely:** as shipped, any signer with access to a
-referee contract could call `submit_hidden_move`/`bid`/`claim`/etc. on
-behalf of *any* player index — the contract does not check that the caller
-owns that seat.
-
-**What still holds:** the ZK proofs and the referee's own state machine
-(turn order, phase gating, proof-binding to the referee's own stored
-commitments — see `docs/adr/004-proof-bound-to-authoritative-state.md`) are
-real and enforced regardless of who calls. A malicious caller cannot forge
-an illegal move or a false reveal; they could only (in a multi-wallet
-deployment without this fix) act on behalf of a seat they don't legitimately
-own. Per-caller `require_auth()` binding is the concrete hardening step
-before real multiplayer with independent wallets per seat — a scoped,
-well-understood addition to each referee's existing move-dispatch logic,
-not an architectural rework.
+**Remaining caveat:** `join` and `start` (Blackout's lobby phase) are
+deliberately permissionless — enrolling an address costs it nothing, and
+requiring the joiner's signature would force wallet prompts inside
+server-orchestrated match creation. Who may claim a seat in an open lobby
+is an API-layer concern (the durable-store/matchmaking workstream), not a
+contract one. Proof anti-replay (§7) is likewise unchanged.
 
 ## 3. Match state is in-memory and single-process
 
@@ -85,25 +77,22 @@ orchestration is designed to support it, but the web app's proving pipeline
 today runs server-side only — a human playing Blackout is always seated as
 an Investigator (a public-move role), never as the Phantom.
 
-## 5. Liar's Dice and Coup-lite's on-chain demos are 2-player
+## 5. N-player elimination is live locally; the Liar's Dice *contract* stays 2-player
 
-- **Liar's Dice:** the `liars-dice-referee` contract's constructor
-  hard-rejects any `n_players != 2` (`Error::UnsupportedConfig`). This is a
-  deliberate soundness choice, not an oversight: a single elimination round
-  is only a complete, sound game when it starts from exactly 2 players
-  (eliminating one always leaves exactly 1 alive — a definitive winner,
-  with no need to re-roll for a following round). Multi-round elimination
-  tournaments (re-roll + re-seed per round for surviving players) are
-  flagged as a scoped, structurally-supported follow-up in the M6.2 report,
-  not attempted here.
-- **Coup-lite:** the `coup-referee` contract itself natively supports 2–4
-  players (its constructor validates `2 <= n_players <= 4`, and a real
-  3-player native test exercises a proof-binding-rejection scenario). The
-  *shippable showcase* (`games/coup-lite/src/coup-lite.ts`'s `defineGame`
-  and its on-chain demo) is fixed at 2 players, because `@zktable/core`'s
-  generic turn engine doesn't yet have an "skip an eliminated player's
-  turn" hook that Coup-lite's elimination model needs for 3+ players. The
-  contract is more general than the demo exercising it.
+**Fixed in M8.2:** `@zktable/core` now has a `turn.eliminated` hook — the
+engine skips eliminated seats when advancing the turn. Coup-lite's
+`defineGame` spans the referee's full 2–4 player range (a real 3-player
+match with per-seat signing ran on testnet — `docs/milestones.md` M8.2),
+and Liar's Dice supports 2–6 players locally with multi-round die-loss
+elimination (a lost challenge costs one die; alive players re-roll; last
+player with dice wins).
+
+**Remaining caveat:** the `liars-dice-referee` *contract* still hard-locks
+`n_players == 2` with single-round whole-seat loss (`UnsupportedConfig`
+otherwise) — its per-round `dice_valid` re-roll protocol for survivors is a
+separate contract workstream. The on-chain Liar's Dice demo therefore stays
+2-player (the runner passes `lossMode: 'seat'` so the local mirror matches
+the chain exactly).
 
 ## 6. Blackout's map is 100 nodes, not the classic 199-node topology
 

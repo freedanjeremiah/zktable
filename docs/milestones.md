@@ -249,3 +249,61 @@ covering the load-bearing design decisions), `docs/tutorial-build-a-game.md`
 `docs/limitations.md` (the itemized honest-limitations list). No package or
 contract code changed in this milestone — all 234 TS + 84 Rust tests remain
 green, confirmed by re-running the full suite before writing this entry.
+
+## M8 — Trustless multiplayer hardening (auth, elimination, provable shuffle) ✅
+
+**Done:** 2026-07-03. Three of the five post-M7 workstreams from
+`HANDOFF.md`, each spec'd in `docs/superpowers/specs/` before
+implementation. Test suite grew to **249 TS + 92 Rust tests**, all green.
+
+### M8.1 — Per-seat `require_auth()` across all three referees
+
+Every per-seat in-game entry point now requires the seat owner's Stellar
+`Address` authorization (fixed at `join`/construction); `join`/`start` stay
+deliberately permissionless (spec'd rationale). Clients gained per-seat
+`--source` signing (`sourceForSeat`), runners a `*_MULTISIG=1` mode that
+provisions one funded identity per seat, and the web app a Freighter
+prepare/sign/submit flow for investigator moves (`--build-only` →
+`tx simulate` → browser signature → `tx send`).
+
+| Evidence (all live testnet, multi-identity: `alice` + `alice-seat1/2`) | Value |
+|---|---|
+| Blackout referee (full 3-round game, per-seat signing, capture at reveal) | `CD2LDMU4MZR72QXBKNO6WEESHJ6WPBXE5EW6DRK2W25V7I7K5Z6QBI4P` |
+| Wrong-signer rejection (seat owned by `alice-seat1`, `alice` attempts `set_public_start` → auth demand for `GC5S2UAC…`; owner-signed tx succeeds) | referee `CDFZUQQJAGTA7POXZULQUPZBQ6F6I2LTFCRUIOTMZFDEFC66CWJVFZTW`, tx `99b93efe0e997b8ce89a3e589b94467e127a756e88d4088be1b816fc57929a87` |
+| Liar's Dice (full game, per-seat signing) | `CB374UGDL4ZU5KMGMR5E2BBA7YD5F6IGB4OG44LWBA54WAERSMJHQFWL` |
+
+### M8.2 — Engine `turn.eliminated` hook + N-player games
+
+`@zktable/core` gained a declarative elimination predicate: the engine
+skips eliminated seats when advancing the turn (round numbering stable),
+returns them no legal moves, and throws if the field drops to one seat
+while `end()` still returns null. Coup-lite's `defineGame` now spans the
+referee's native 2–4 player range; Liar's Dice plays 2–6 locally with
+multi-round die-loss elimination (the on-chain runner passes
+`lossMode: 'seat'` to stay in lockstep with the still-2-player contract).
+
+| Evidence | Value |
+|---|---|
+| 3-player Coup-lite on testnet (3 seats, 3 identities, 4 real `card_membership` proofs verified on-chain, survivor-of-3 outcome `player3`) | referee `CC4PQKMDREW7UTPB6EA65JQQIHOJZXLCT5NOYUOQNXBVZX27FM7IN6TE` |
+
+### M8.3 — `valid_shuffle`: the deal is now provably fair
+
+New Noir circuit (`packages/circuits/valid_shuffle`) proves the whole
+15-card committed deck (3 copies × 5 characters, real Coup) is the
+canonical set permuted by the UNIQUE order forced by an on-chain
+commit-reveal seed (sort keys `Poseidon2(seed, i)`, low-64-bit truncation,
+byte-matched by `zktable-graph shuffle-witness`). The coup-referee replaced
+its trusted `deal` with `SeedCommit → SeedReveal → Shuffle` phases: the
+shuffle proof verifies against a second verifier instance with
+public_inputs rebuilt from the referee's OWN stored seed, then hands are
+assigned by fixed deck position (player p = leaves 2p, 2p+1) — the dealer
+cannot choose the deal, only learn it (see ADR 009; limitations §1 for
+what deliberately remains). 16 native contract tests with real fixture
+proofs, including tampered-proof, wrong-seed-proof, and seed-bias
+rejections.
+
+| Evidence (live testnet, full match) | Value |
+|---|---|
+| Coup referee (seed commit-reveal on-chain → `valid_shuffle` proof verified cross-contract → position-assigned hands → real `card_membership` challenge proofs → outcome) | `CC6XWHXGKDZNB5TOVJ4CTNP7XCPQRAJ42FZRNNGGWDVGBP6R2IKBDFOV` |
+| `card_membership` verifier / `valid_shuffle` verifier | `CAKAZZWD4JAHM2INJX5HYM2E3DYV72JDAHBCQJRS6HDQ2ODB46LNOZXO` / `CCUS3PAQBOVT2AVI637PTTLQQWSVRPWXH4OHNCPNLW5PWJ3VYZ7EE5Q2` |
+| On-chain joint seed for that match | `0x23ab9cec95cc5ec7d8407a3f8dec8815db6707bc1511b7b81decf242e60e142c` |

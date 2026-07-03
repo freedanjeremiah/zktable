@@ -31,9 +31,16 @@ deck position — `deal` stops accepting commitments from the caller entirely.
 - Changing `card_membership` — it keeps working unchanged because deck-leaf
   commitments use the identical `Poseidon2(card, salt)` form the hand
   commitments already use.
-- Larger decks / Merkle roots. N = 5 here, so the deck commitment is simply
-  the 5 leaf commitments as public inputs (5×32 B on-chain — no tree needed).
-  A Merkle-rooted variant is a documented follow-up for big decks.
+- Merkle roots. The deck commitment is simply the leaf commitments as public
+  inputs (no tree needed at this size). A Merkle-rooted variant is a
+  documented follow-up for big decks.
+
+> **Implementation amendment:** the deck is **15 cards (3 copies × 5
+> characters, real Coup)**, not the 5 sketched below — a 5-card deck caps
+> position-assigned hands at 2 players, which would have regressed the
+> referee's (and M8.2's) 2–4 player support. Positions 2p/2p+1 deal up to 4
+> players; the rest stay burned. Constraint counts stay trivial (105
+> pairwise inequalities, 30 Poseidon hashes, 14 comparisons).
 
 ## Design
 

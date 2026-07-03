@@ -24,6 +24,10 @@ export const CARD_MEMBERSHIP_TARGET_DIR = path.join(CARD_MEMBERSHIP_CIRCUIT_DIR,
 export const DEFAULT_VK_PATH = path.join(CARD_MEMBERSHIP_TARGET_DIR, 'vk')
 export const DEFAULT_BYTECODE_PATH = path.join(CARD_MEMBERSHIP_TARGET_DIR, 'card_membership.json')
 
+export const VALID_SHUFFLE_CIRCUIT_DIR = path.join(REPO_ROOT, 'packages/circuits/valid_shuffle')
+export const VALID_SHUFFLE_TARGET_DIR = path.join(VALID_SHUFFLE_CIRCUIT_DIR, 'target')
+export const DEFAULT_SHUFFLE_VK_PATH = path.join(VALID_SHUFFLE_TARGET_DIR, 'vk')
+
 export const GRAPH_TOOLS_BIN = path.join(
   REPO_ROOT,
   'packages/contracts/tools/graph-tools/target/release/zktable-graph',
