@@ -109,10 +109,10 @@ export default function CoupLitePage() {
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-[0.95rem] leading-relaxed text-fg-muted">
-              A provably-fair deal (<span className="font-mono text-fg">valid_shuffle</span> proof on testnet) gives
-              you and one AI a hidden two-card hand. Claim a character&rsquo;s power, or challenge theirs — a truthful
-              claim is proven with a real <span className="font-mono text-fg">card_membership</span> proof; a bluff
-              costs an influence.
+              A provably-fair deal (<span className="font-mono text-fg">valid_shuffle</span>{" "}proof on testnet)
+              gives you and one AI a hidden two-card hand. Claim a character&rsquo;s power, or challenge theirs — a
+              truthful claim is proven with a real <span className="font-mono text-fg">card_membership</span>{" "}proof;
+              a bluff costs an influence.
             </p>
             <Button variant="primary" size="lg" onClick={() => void start()}>
               <Skull className="h-4 w-4" /> Deploy a real match

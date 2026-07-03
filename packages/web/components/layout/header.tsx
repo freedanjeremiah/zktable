@@ -27,7 +27,8 @@ export function Header() {
           </Badge>
         </div>
 
-        <nav className="hidden items-center gap-6 md:flex">
+        {/* Two short links — visible at every size (no mobile menu needed). */}
+        <nav className="flex items-center gap-4 md:gap-6">
           {NAV_LINKS.map((link) => (
             <Link
               key={link.href}
