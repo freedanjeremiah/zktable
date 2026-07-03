@@ -108,6 +108,12 @@ importers:
       '@zktable/core':
         specifier: workspace:*
         version: link:../core
+      '@zktable/coup-lite':
+        specifier: workspace:*
+        version: link:../../games/coup-lite
+      '@zktable/liars-dice':
+        specifier: workspace:*
+        version: link:../../games/liars-dice
       '@zktable/prover-web':
         specifier: workspace:*
         version: link:../prover-web

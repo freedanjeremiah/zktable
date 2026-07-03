@@ -5,9 +5,21 @@
 // server only ever sees commitments, tickets, and proof bytes.
 
 import type { WebBoardProver } from "@zktable/prover-web";
-import { bytesToHex } from "@zktable/prover-web";
 import { CITY_GRAPH } from "../board/city-graph";
 import { movesFrom } from "../board/shadow";
+
+/**
+ * Local copy ON PURPOSE: a runtime import from @zktable/prover-web would
+ * pull bb.js into the page bundle EAGERLY (its module init throws in a
+ * non-isolated context and defeats the lazy-WASM design) — only the
+ * type-only import above and the dynamic import in getPhantomProver may
+ * reference that package.
+ */
+function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return out;
+}
 
 export type PhantomSecret = {
   pos: number;

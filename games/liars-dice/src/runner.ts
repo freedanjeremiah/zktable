@@ -115,7 +115,7 @@ export type Transcript = {
   outcome: PlayerId | null
 }
 
-async function ensureContractWasms(log: (line: string) => void): Promise<void> {
+export async function ensureContractWasms(log: (line: string) => void): Promise<void> {
   const { access } = await import('node:fs/promises')
   const missing: string[] = []
   for (const p of [DEFAULT_VERIFIER_WASM, DEFAULT_LIARS_DICE_REFEREE_WASM]) {
