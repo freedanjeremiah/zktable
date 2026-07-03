@@ -53,6 +53,12 @@ export type MatchRuntime = {
   /** Cached last-seen chain state, updated whenever we fetch it — lets the
    *  DTO builder avoid a redundant `game_state` read right after a move. */
   lastChainState?: ChainGameState;
+  /** Wallet-bound human seat (Freighter): the referee's require_auth() binds
+   *  this seat to `address`, so its moves go prepare -> sign -> submit. */
+  walletSeat?: { player: number; address: string };
+  /** Unsigned `set_public_start` envelope awaiting the wallet's signature —
+   *  the match stays in Lobby (start() deferred) until it lands. */
+  pendingStart?: { player: number; node: number; xdr: string };
 };
 
 type Store = Map<string, MatchRuntime>;

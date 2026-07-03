@@ -39,6 +39,7 @@ import { toDto } from "./dto";
 import type { MatchRuntime } from "./match-store";
 import { getMatch, saveMatch } from "./match-store";
 import { pickStartPositions } from "./start-positions";
+import { buildUnsignedInvokeXdr, sendSignedTx } from "./prepare";
 
 export type CreateMatchOptions = {
   /** Total investigator seats. Defaults to 3 (one human + two AI). */
@@ -49,6 +50,14 @@ export type CreateMatchOptions = {
   model?: string;
   network?: string;
   source?: string;
+  /**
+   * Freighter wallet G-address for the (first) human investigator seat.
+   * When set, that seat is joined with THIS address — the referee's
+   * require_auth() then demands the wallet's signature on every one of its
+   * moves, so its `set_public_start` and moves go prepare/sign/submit and
+   * `start()` is deferred until the signed start lands.
+   */
+  walletAddress?: string;
   log?: (line: string) => void;
 };
 
@@ -120,12 +129,19 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
 
   const addr = await addressOf(source);
 
+  // The human seat is the FIRST investigator entry (AI seats are the last
+  // `aiInvestigatorCount` — see the agents map below). When a wallet address
+  // is provided it owns that seat on-chain.
+  const investigatorIds = roster.filter((p) => p.role === "investigator").map((p) => p.id);
+  const humanSeatId = aiInvestigatorCount < investigatorCount ? investigatorIds[0] : undefined;
+
   const playerIndex = new Map<PlayerId, number>();
   const indexToPlayer = new Map<number, PlayerId>();
   for (const p of roster) {
+    const seatAddr = opts.walletAddress && p.id === humanSeatId ? opts.walletAddress : addr;
     log(`joining ${p.id} (${p.role})…`);
     const idx = await client.join(refereeContractId, {
-      addr,
+      addr: seatAddr,
       role: p.role,
       ticketTaxi: DEFAULT_TICKETS.taxi,
       ticketBus: DEFAULT_TICKETS.bus,
@@ -150,14 +166,35 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
   log(`setting Phantom hidden start (node ${phantomStart})…`);
   await client.setHiddenStart(refereeContractId, playerIndex.get("phantom")!, initialCommitment);
 
+  // The wallet-bound seat's set_public_start must be signed by the wallet
+  // (require_auth), so the server can only PREPARE it; start() is deferred
+  // until the signed envelope lands (completeSignedStart).
+  const walletSeatEntry =
+    opts.walletAddress && humanSeatId ? { player: playerIndex.get(humanSeatId)!, address: opts.walletAddress } : undefined;
+  let pendingStart: MatchRuntime["pendingStart"];
+
   for (const p of investigatorEntries) {
     const node = startPositions[p.id]!;
+    if (walletSeatEntry && p.id === humanSeatId) {
+      log(`preparing ${p.id} public start (node ${node}) for wallet signature…`);
+      const xdr = await buildUnsignedInvokeXdr({
+        contractId: refereeContractId,
+        network,
+        sourceAccount: walletSeatEntry.address,
+        method: "set_public_start",
+        methodArgs: ["--player", String(walletSeatEntry.player), "--node", String(node)],
+      });
+      pendingStart = { player: walletSeatEntry.player, node, xdr };
+      continue;
+    }
     log(`setting ${p.id} public start (node ${node})…`);
     await client.setPublicStart(refereeContractId, playerIndex.get(p.id)!, node);
   }
 
-  log("starting the match…");
-  await client.start(refereeContractId);
+  if (!pendingStart) {
+    log("starting the match…");
+    await client.start(refereeContractId);
+  }
 
   const config: BlackoutConfig = {
     startPositions,
@@ -195,10 +232,26 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
     source,
     createdAt: Date.now(),
     log: [],
+    walletSeat: walletSeatEntry,
+    pendingStart,
   };
   saveMatch(runtime);
 
   return fetchDto(runtime);
+}
+
+/**
+ * Lands the wallet-signed `set_public_start`, then `start()`s the match
+ * (server-signed — start is permissionless once the roster is complete).
+ */
+export async function completeSignedStart(runtime: MatchRuntime, signedXdr: string): Promise<void> {
+  if (!runtime.pendingStart) {
+    throw new BlackoutApiError(409, "this match has no pending start awaiting a signature");
+  }
+  await sendSignedTx(runtime.network, signedXdr);
+  await runtime.client.start(runtime.refereeId);
+  runtime.pendingStart = undefined;
+  saveMatch(runtime);
 }
 
 export function requireMatch(matchId: string): MatchRuntime {
@@ -224,6 +277,16 @@ export async function submitHumanMove(
   runtime: MatchRuntime,
   opts: { player: number; node: number; ticket: number },
 ): Promise<void> {
+  const { playerId, state } = await validateHumanMove(runtime, opts);
+  await runtime.client.submitPublicMove(runtime.refereeId, { player: opts.player, node: opts.node, ticket: opts.ticket });
+  recordHumanMove(runtime, playerId, state.round, opts);
+}
+
+/** Shared status/turn/seat/legality validation for every human-move path. */
+async function validateHumanMove(
+  runtime: MatchRuntime,
+  opts: { player: number; node: number; ticket: number },
+): Promise<{ playerId: PlayerId; state: ChainGameState }> {
   const state = await runtime.client.gameState(runtime.refereeId);
   if (state.status !== "Active") {
     throw new BlackoutApiError(409, `match is not active (status: ${state.status})`);
@@ -249,18 +312,58 @@ export async function submitHumanMove(
       `illegal move: node ${opts.node} / ticket ${opts.ticket} is not among this player's legal moves (${JSON.stringify(view.legalMoves)})`,
     );
   }
+  return { playerId, state };
+}
 
-  await runtime.client.submitPublicMove(runtime.refereeId, { player: opts.player, node: opts.node, ticket: opts.ticket });
+function recordHumanMove(
+  runtime: MatchRuntime,
+  playerId: PlayerId,
+  round: number,
+  opts: { node: number; ticket: number },
+): void {
   runtime.local.submit(playerId, { type: "move", to: opts.node, ticket: opts.ticket });
   runtime.log.push({
     type: "public_move",
-    round: state.round,
+    round,
     player: playerId,
     to: opts.node,
     ticket: opts.ticket,
     txOk: true,
     at: Date.now(),
   });
+}
+
+/**
+ * Builds the unsigned `submit_public_move` envelope for the wallet-bound
+ * human seat. The browser signs it with Freighter and posts it back to
+ * `submitSignedHumanMove` — the server never holds the wallet's key.
+ */
+export async function prepareHumanMove(
+  runtime: MatchRuntime,
+  opts: { player: number; node: number; ticket: number },
+): Promise<{ xdr: string }> {
+  if (!runtime.walletSeat || runtime.walletSeat.player !== opts.player) {
+    throw new BlackoutApiError(400, `player ${opts.player} is not the wallet-bound seat — use POST /moves`);
+  }
+  await validateHumanMove(runtime, opts);
+  const xdr = await buildUnsignedInvokeXdr({
+    contractId: runtime.refereeId,
+    network: runtime.network,
+    sourceAccount: runtime.walletSeat.address,
+    method: "submit_public_move",
+    methodArgs: ["--player", String(opts.player), "--node", String(opts.node), "--ticket", String(opts.ticket)],
+  });
+  return { xdr };
+}
+
+/** Lands a Freighter-signed `submit_public_move`, then mirrors it locally. */
+export async function submitSignedHumanMove(
+  runtime: MatchRuntime,
+  opts: { player: number; node: number; ticket: number; signedXdr: string },
+): Promise<void> {
+  const { playerId, state } = await validateHumanMove(runtime, opts);
+  await sendSignedTx(runtime.network, opts.signedXdr);
+  recordHumanMove(runtime, playerId, state.round, opts);
 }
 
 export type AdvanceAiTurnsResult = { movesPlayed: number };

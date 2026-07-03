@@ -21,6 +21,8 @@ import { CITY_GRAPH } from "@/lib/board/city-graph";
 import { computeShadow, extractPhantomTickets } from "@/lib/board/shadow";
 import type { Ticket } from "@/lib/board/ticket-meta";
 import { DEFAULT_REVEAL_ROUNDS } from "@/lib/board/ticket-meta";
+import { signTransactionXdr } from "@/lib/wallet/freighter-adapter";
+import { useWallet } from "@/lib/wallet/wallet-context";
 import { cn } from "@/lib/utils";
 
 type Phase = "setup" | "creating" | "active" | "finished";
@@ -37,6 +39,7 @@ async function readJson<T>(res: Response): Promise<T> {
 }
 
 export default function BlackoutBoardPage() {
+  const wallet = useWallet();
   const [phase, setPhase] = useState<Phase>("setup");
   const [matchId, setMatchId] = useState<string | null>(null);
   const [explorerUrl, setExplorerUrl] = useState<string>("");
@@ -86,12 +89,14 @@ export default function BlackoutBoardPage() {
       setPhase("creating");
       setCreateStartedAt(Date.now());
       try {
+        const walletAddress = wallet.status === "connected" ? wallet.address : undefined;
         const res = await fetch("/api/blackout/matches", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             investigators: options.investigators,
             model: options.model || undefined,
+            walletAddress: walletAddress ?? undefined,
           }),
         });
         const json = await readJson<{ matchId: string; explorerUrl: string; state: MatchDto }>(res);
@@ -100,6 +105,25 @@ export default function BlackoutBoardPage() {
         setDto(json.state);
         const human = json.state.players.find((p) => p.role === "investigator" && !p.isAi);
         setHumanPlayerId(human?.id ?? null);
+
+        // Wallet-bound seat: the referee demands the wallet's signature on
+        // its own set_public_start before the match can start.
+        let state = json.state;
+        if (state.pendingStart) {
+          setBusyLabel("Sign your starting position in Freighter…");
+          const signedXdr = await signTransactionXdr(state.pendingStart.xdr, {
+            address: walletAddress ?? undefined,
+          });
+          const startRes = await fetch(`/api/blackout/matches/${json.matchId}/start-signed`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ signedXdr }),
+          });
+          state = await readJson<MatchDto>(startRes);
+          setDto(state);
+          setBusyLabel(null);
+        }
+
         setPhase("active");
         // The Phantom always opens — advance it immediately so the board
         // never sits idle waiting on an AI seat.
@@ -109,7 +133,7 @@ export default function BlackoutBoardPage() {
         setPhase("setup");
       }
     },
-    [runAiTurns],
+    [runAiTurns, wallet.status, wallet.address],
   );
 
   const submitMove = useCallback(
@@ -119,11 +143,32 @@ export default function BlackoutBoardPage() {
       setPendingPick(null);
       setBusyLabel("Submitting your move…");
       try {
-        const res = await fetch(`/api/blackout/matches/${matchId}/moves`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ player: dto.currentPlayer.index, node, ticket }),
-        });
+        const player = dto.currentPlayer.index;
+        let res: Response;
+        if (dto.walletSeat && dto.walletSeat.player === player) {
+          // Wallet-bound seat: prepare -> Freighter sign -> submit. The
+          // referee's require_auth() rejects anything the wallet didn't sign.
+          const prepRes = await fetch(`/api/blackout/matches/${matchId}/moves/prepare`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ player, node, ticket }),
+          });
+          const { xdr } = await readJson<{ xdr: string }>(prepRes);
+          setBusyLabel("Sign your move in Freighter…");
+          const signedXdr = await signTransactionXdr(xdr, { address: dto.walletSeat.address });
+          setBusyLabel("Submitting your signed move…");
+          res = await fetch(`/api/blackout/matches/${matchId}/moves/submit`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ player, node, ticket, signedXdr }),
+          });
+        } else {
+          res = await fetch(`/api/blackout/matches/${matchId}/moves`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ player, node, ticket }),
+          });
+        }
         setProofPhase("proving");
         const next = await readJson<MatchDto>(res);
         setDto(next);

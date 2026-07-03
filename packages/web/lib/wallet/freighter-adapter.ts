@@ -15,6 +15,7 @@ import {
   isAllowed as freighterIsAllowed,
   isConnected as freighterIsConnected,
   requestAccess as freighterRequestAccess,
+  signTransaction as freighterSignTransaction,
 } from "@stellar/freighter-api";
 
 export const TESTNET_PASSPHRASE = "Test SDF Network ; September 2015";
@@ -148,6 +149,23 @@ export async function readNetwork(): Promise<NetworkInfo> {
     networkUrl: res.networkUrl,
     sorobanRpcUrl: res.sorobanRpcUrl,
   };
+}
+
+/**
+ * Ask Freighter to sign a transaction envelope (base64 XDR) with the
+ * connected account, on testnet. No timeout here — the user may reasonably
+ * take a while to review the prompt; cancelling in Freighter surfaces as an
+ * `error` payload, which becomes a thrown FreighterAdapterError.
+ */
+export async function signTransactionXdr(xdr: string, opts: { address?: string } = {}): Promise<string> {
+  const res = await freighterSignTransaction(xdr, {
+    networkPassphrase: TESTNET_PASSPHRASE,
+    address: opts.address,
+  });
+  if (res.error) {
+    throw new FreighterAdapterError("Freighter didn't sign the transaction.", res.error);
+  }
+  return res.signedTxXdr;
 }
 
 /** Ask Friendbot to fund a fresh/empty testnet account. */

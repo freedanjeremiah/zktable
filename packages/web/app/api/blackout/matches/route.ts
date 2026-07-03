@@ -13,6 +13,8 @@ type CreateMatchBody = {
   investigators?: number;
   aiInvestigators?: number;
   model?: string;
+  /** Freighter G-address that will own the human investigator seat. */
+  walletAddress?: string;
 };
 
 /**
@@ -36,6 +38,7 @@ export async function POST(request: Request) {
       investigators: body.investigators,
       aiInvestigators: body.aiInvestigators,
       model: body.model,
+      walletAddress: typeof body.walletAddress === "string" ? body.walletAddress : undefined,
       log: (line) => console.log(`[blackout:create ${requestTag}]`, line),
     });
     return NextResponse.json({

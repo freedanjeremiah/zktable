@@ -46,6 +46,12 @@ export type MatchDto = {
   proofStatus: ProofStatus | null;
   log: MatchEvent[];
   mapMeta: { name: string; nodeCount: number };
+  /** Wallet-bound human seat, when the match was created with a Freighter
+   *  address — its moves must go through prepare/sign/submit. */
+  walletSeat: { player: number; address: string } | null;
+  /** Unsigned `set_public_start` XDR the wallet must sign before the match
+   *  can start (present only while the match is still in Lobby). */
+  pendingStart: { player: number; node: number; xdr: string } | null;
 };
 
 /** The subset of `MatchRuntime` `toDto` needs — kept narrow so this stays unit-testable. */
@@ -61,6 +67,8 @@ export type DtoContext = {
   local: { view(id: PlayerId): PlayerView };
   log: MatchEvent[];
   lastProof?: ProofStatus;
+  walletSeat?: { player: number; address: string };
+  pendingStart?: { player: number; node: number; xdr: string };
 };
 
 export function toDto(state: ChainGameState, ctx: DtoContext): MatchDto {
@@ -116,5 +124,7 @@ export function toDto(state: ChainGameState, ctx: DtoContext): MatchDto {
     proofStatus: ctx.lastProof ?? null,
     log: ctx.log,
     mapMeta: { name: CITY.name, nodeCount: CITY.nodes.length },
+    walletSeat: ctx.walletSeat ?? null,
+    pendingStart: ctx.pendingStart ?? null,
   };
 }
