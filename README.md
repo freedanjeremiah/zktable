@@ -16,9 +16,8 @@ very different games (a hidden-movement manhunt, a bluffing dice game, and a
 hidden-hand social-deduction game) run on the same SDK, and every one of
 their secret-dependent moves has been ZK-verified on live Stellar testnet.
 
-See [`PRD.md`](./PRD.md) for the full design spec and
-[`docs/milestones.md`](./docs/milestones.md) for the build log with
-on-chain evidence for every milestone.
+Every secret-dependent move has on-chain evidence — the referee contract IDs
+and live testnet explorer links are in the tables below.
 
 ## Compose, don't compile
 
@@ -38,8 +37,7 @@ these five, composed:
 You never write a circuit. You compose these primitives in a declarative
 `defineGame` call; the SDK derives the ZK proof orchestration, the on-chain
 referee calls, and the `PlayerView` an AI agent sees, all from that one
-definition. See [`docs/tutorial-build-a-game.md`](./docs/tutorial-build-a-game.md)
-for a worked example in under 200 lines.
+definition — a full game fits in under 200 lines.
 
 The universal execution pattern, for every primitive:
 
@@ -74,9 +72,8 @@ a full interactive web UI — see below.
 
 Every referee above is a genuinely separate contract deployment with its
 own real UltraHonk verifier, proving the SDK's ZK path generalizes rather
-than being hard-coded to one game. Full transcripts (contract IDs, tx
-outcomes, hand-checked results) are in
-[`docs/milestones.md`](./docs/milestones.md).
+than being hard-coded to one game. Each contract ID above links to its live
+transaction history on the Stellar testnet explorer.
 
 ## Quick start
 
@@ -159,18 +156,39 @@ only — the key never reaches the browser).
 | `packages/web` (`@zktable/web`) | The Next.js arcade: landing page, lobby, Freighter wallet connect, and the interactive Blackout board + match API |
 | `games/blackout`, `games/liars-dice`, `games/coup-lite` | The three `defineGame` game definitions, AI strategies, and headless testnet runners |
 
-## Documentation
+## Published npm packages
 
-- [`docs/milestones.md`](./docs/milestones.md) — the build log: every
-  milestone with its real on-chain evidence (contract IDs, tx outcomes).
-- [`docs/adr/`](./docs/adr) — short Architecture Decision Records explaining
-  the load-bearing design choices.
-- [`docs/tutorial-build-a-game.md`](./docs/tutorial-build-a-game.md) — build
-  your own zkTable game in under 200 lines.
-- [`docs/demo-script.md`](./docs/demo-script.md) — a 2–3 minute spoken demo
-  walkthrough.
-- [`docs/limitations.md`](./docs/limitations.md) — the honest limitations
-  list, expanded from the summary below.
+All nine packages are published to npm under the
+[`@zktable`](https://www.npmjs.com/org/zktable) scope at version `0.1.0`
+(public access). Workspace links are resolved to real versions at publish
+time, so each package installs standalone.
+
+```bash
+# the SDK core + the ZK primitive wrappers
+npm install @zktable/core @zktable/circuits
+
+# AI agents (HeuristicAgent / RandomAgent / ClaudeAgent)
+npm install @zktable/agents
+
+# browser proving helper (Noir + bb.js)
+npm install @zktable/prover-web
+```
+
+| Package | npm | Install |
+|---|---|---|
+| `@zktable/core` | [npmjs.com](https://www.npmjs.com/package/@zktable/core) | `npm i @zktable/core` |
+| `@zktable/circuits` | [npmjs.com](https://www.npmjs.com/package/@zktable/circuits) | `npm i @zktable/circuits` |
+| `@zktable/contracts` | [npmjs.com](https://www.npmjs.com/package/@zktable/contracts) | `npm i @zktable/contracts` |
+| `@zktable/agents` | [npmjs.com](https://www.npmjs.com/package/@zktable/agents) | `npm i @zktable/agents` |
+| `@zktable/prover-web` | [npmjs.com](https://www.npmjs.com/package/@zktable/prover-web) | `npm i @zktable/prover-web` |
+| `@zktable/blackout` | [npmjs.com](https://www.npmjs.com/package/@zktable/blackout) | `npm i @zktable/blackout` |
+| `@zktable/liars-dice` | [npmjs.com](https://www.npmjs.com/package/@zktable/liars-dice) | `npm i @zktable/liars-dice` |
+| `@zktable/coup-lite` | [npmjs.com](https://www.npmjs.com/package/@zktable/coup-lite) | `npm i @zktable/coup-lite` |
+| `@zktable/web` | [npmjs.com](https://www.npmjs.com/package/@zktable/web) | `npm i @zktable/web` |
+
+The TypeScript packages ship ESM + CJS builds with `.d.ts` types.
+`@zktable/contracts` ships the Rust source (Soroban referee + vendored
+UltraHonk verifier); `@zktable/web` ships the Next.js arcade source.
 
 ## Limitations — read this before you trust it with real stakes
 
@@ -210,12 +228,9 @@ production multiplayer platform. Specifically, and honestly:
   tests, but the shipped `defineGame`/on-chain demo runs 2-player, because
   the generic turn engine doesn't yet skip eliminated players' turns.
 - **Blackout's map is 100 nodes**, not the classic 199-node London
-  topology — a deliberate v1 scope choice for build/perf time, called a
-  stretch goal in the PRD (§12.1), not attempted here.
-
-See [`docs/limitations.md`](./docs/limitations.md) for the full, itemized
-version of this list with pointers to the exact code and reports.
+  topology — a deliberate v1 scope choice for build/perf time, not a
+  full-scale re-implementation.
 
 ## License
 
-Not yet specified.
+MIT — see [`LICENSE`](./LICENSE).
