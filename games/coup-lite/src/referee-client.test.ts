@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { RefereeCliError, stripHexPrefix, toBe32Hex } from './referee-client.js'
 
 describe('stripHexPrefix', () => {
@@ -66,5 +66,36 @@ describe('RefereeCliError', () => {
     const err = new RefereeCliError(['contract', 'invoke'], 'Error(Contract, #999)')
     expect(err.contractErrorCode).toBe(999)
     expect(err.contractErrorName).toBeNull()
+  })
+})
+
+describe('per-seat signing (sourceForSeat)', () => {
+  it("signs a seat's move with that seat's source and falls back to source otherwise", async () => {
+    vi.resetModules()
+    const execCalls: Array<{ bin: string; args: string[] }> = []
+    vi.doMock('node:child_process', () => {
+      const custom = Symbol.for('nodejs.util.promisify.custom')
+      const execFile = (() => {
+        throw new Error('callback-style execFile not expected')
+      }) as unknown as Record<symbol, unknown>
+      execFile[custom] = async (bin: string, args: string[]) => {
+        execCalls.push({ bin, args })
+        return { stdout: '', stderr: '' }
+      }
+      return { execFile }
+    })
+    const { CliRefereeClient: MockedClient } = await import('./referee-client.js')
+
+    const client = new MockedClient({ sourceForSeat: { 1: 'seat1-key' } })
+    await client.claim('CID', { player: 1, character: 2 })
+    const args = execCalls.at(-1)!.args
+    expect(args).toContain('claim')
+    expect(args[args.indexOf('--source') + 1]).toBe('seat1-key')
+
+    // A seat without a sourceForSeat entry falls back to the default source.
+    const fallback = new MockedClient({ sourceForSeat: { 1: 'seat1-key' } })
+    await fallback.claim('CID', { player: 0, character: 2 })
+    expect(execCalls.at(-1)!.args[execCalls.at(-1)!.args.indexOf('--source') + 1]).toBe('alice')
+    vi.doUnmock('node:child_process')
   })
 })

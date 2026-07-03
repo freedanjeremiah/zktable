@@ -38,6 +38,7 @@ async function main(): Promise<void> {
     investigatorCount,
     seed: process.env.BLACKOUT_SEED ?? `blackout-testnet-${Date.now()}`,
     scriptedCapture: scriptedRound !== undefined ? { round: scriptedRound, investigatorIndex: 0 } : undefined,
+    multiSeat: process.env.BLACKOUT_MULTISIG === '1',
     log: (line) => console.log(line),
   })
 

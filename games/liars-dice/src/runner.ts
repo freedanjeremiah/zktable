@@ -18,6 +18,7 @@ import {
   DICE_VALID_CIRCUIT_DIR,
 } from './paths.js'
 import { CliRefereeClient, toBe32Hex } from './referee-client.js'
+import { ensureIdentities, seatIdentityNames } from './identities.js'
 import type { ChainGameState } from './referee-client.js'
 import { chooseMove } from './strategy.js'
 
@@ -81,6 +82,13 @@ export type PlayLiarsDiceOptions = {
   refereeWasmPath?: string
   vkPath?: string
   log?: (line: string) => void
+  /**
+   * When true, provisions one funded testnet identity per seat
+   * (`<source>-seat<i>`) and signs each seat's moves with its own key,
+   * demonstrating genuine multi-wallet play against require_auth().
+   * Default: every seat is owned and signed by `source`.
+   */
+  multiSeat?: boolean
 }
 
 export type Transcript = {
@@ -153,7 +161,17 @@ export async function playLiarsDice(opts: PlayLiarsDiceOptions = {}): Promise<Tr
   log('ensuring dice_valid circuit is compiled + VK is built…')
   await prover.ensureVk()
 
-  const client = new CliRefereeClient({ network: opts.network, source: opts.source })
+  const source = opts.source ?? 'alice'
+  const seatNames = seatIdentityNames(source, N_PLAYERS, opts.multiSeat ?? false)
+  log(`ensuring seat identities exist + are funded: ${[...new Set(seatNames)].join(', ')}…`)
+  const addressByName = await ensureIdentities(seatNames)
+  const playerAddresses = seatNames.map((n) => addressByName[n]!)
+
+  const client = new CliRefereeClient({
+    network: opts.network,
+    source,
+    sourceForSeat: Object.fromEntries(seatNames.map((n, i) => [i, n])),
+  })
 
   log('reading dice_valid verification key…')
   const vkHex = (await readFile(opts.vkPath ?? DEFAULT_VK_PATH)).toString('hex')
@@ -162,10 +180,10 @@ export async function playLiarsDice(opts: PlayLiarsDiceOptions = {}): Promise<Tr
   const verifierContractId = await client.deployVerifier(opts.verifierWasmPath ?? DEFAULT_VERIFIER_WASM, vkHex)
   log(`  verifier: ${verifierContractId}`)
 
-  log('deploying liars-dice referee (n_players=2, dice_per_player=5, sides=6)…')
+  log(`deploying liars-dice referee (seats=[${seatNames.join(', ')}], dice_per_player=5, sides=6)…`)
   const refereeContractId = await client.deployReferee(opts.refereeWasmPath ?? DEFAULT_LIARS_DICE_REFEREE_WASM, {
     verifier: verifierContractId,
-    nPlayers: N_PLAYERS,
+    playerAddresses,
     dicePerPlayer: DICE_PER_PLAYER,
     sides: SIDES,
   })

@@ -9,7 +9,8 @@
 // Usage:
 //   COUP_TESTNET=1 pnpm --filter @zktable/coup-lite play
 //
-// Env overrides: COUP_NETWORK, COUP_SOURCE, COUP_SEED.
+// Env overrides: COUP_NETWORK, COUP_SOURCE, COUP_SEED, COUP_MULTISIG
+// (=1 signs each seat with its own funded identity — see identities.ts).
 
 import { playCoupLite } from './runner.js'
 
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
     network: process.env.COUP_NETWORK ?? 'testnet',
     source: process.env.COUP_SOURCE ?? 'alice',
     seed: process.env.COUP_SEED ?? `coup-lite-testnet-${Date.now()}`,
+    multiSeat: process.env.COUP_MULTISIG === '1',
     log: (line) => console.log(line),
   })
 

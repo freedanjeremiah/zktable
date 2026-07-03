@@ -19,6 +19,7 @@ import {
   CARD_MEMBERSHIP_CIRCUIT_DIR,
 } from './paths.js'
 import { CliRefereeClient, toBe32Hex } from './referee-client.js'
+import { ensureIdentities, seatIdentityNames } from './identities.js'
 import type { ChainGameState } from './referee-client.js'
 import { chooseMove } from './strategy.js'
 
@@ -82,6 +83,13 @@ export type PlayCoupLiteOptions = {
   refereeWasmPath?: string
   vkPath?: string
   log?: (line: string) => void
+  /**
+   * When true, provisions one funded testnet identity per seat
+   * (`<source>-seat<i>`) and signs each seat's moves with its own key,
+   * demonstrating genuine multi-wallet play against require_auth().
+   * Default: every seat is owned and signed by `source`.
+   */
+  multiSeat?: boolean
 }
 
 export type Transcript = {
@@ -167,7 +175,17 @@ export async function playCoupLite(opts: PlayCoupLiteOptions = {}): Promise<Tran
   log('ensuring card_membership circuit is compiled + VK is built…')
   await prover.ensureVk()
 
-  const client = new CliRefereeClient({ network: opts.network, source: opts.source })
+  const source = opts.source ?? 'alice'
+  const seatNames = seatIdentityNames(source, N_PLAYERS, opts.multiSeat ?? false)
+  log(`ensuring seat identities exist + are funded: ${[...new Set(seatNames)].join(', ')}…`)
+  const addressByName = await ensureIdentities(seatNames)
+  const playerAddresses = seatNames.map((n) => addressByName[n]!)
+
+  const client = new CliRefereeClient({
+    network: opts.network,
+    source,
+    sourceForSeat: Object.fromEntries(seatNames.map((n, i) => [i, n])),
+  })
 
   log('reading card_membership verification key…')
   const vkHex = (await readFile(opts.vkPath ?? DEFAULT_VK_PATH)).toString('hex')
@@ -176,10 +194,10 @@ export async function playCoupLite(opts: PlayCoupLiteOptions = {}): Promise<Tran
   const verifierContractId = await client.deployVerifier(opts.verifierWasmPath ?? DEFAULT_VERIFIER_WASM, vkHex)
   log(`  verifier: ${verifierContractId}`)
 
-  log(`deploying coup-referee (n_players=${N_PLAYERS})…`)
+  log(`deploying coup-referee (seats=[${seatNames.join(', ')}])…`)
   const refereeContractId = await client.deployReferee(opts.refereeWasmPath ?? DEFAULT_COUP_REFEREE_WASM, {
     verifier: verifierContractId,
-    nPlayers: N_PLAYERS,
+    playerAddresses,
   })
   log(`  referee: ${refereeContractId}`)
 

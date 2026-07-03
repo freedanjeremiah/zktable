@@ -82,6 +82,13 @@ export type CliRefereeClientOptions = {
   /** Bounded retry for transient (non-contract) CLI/network failures. */
   retries?: number
   retryDelayMs?: number
+  /**
+   * CLI identity name per seat index. When a per-seat mutating call is made
+   * for seat i, the transaction is signed by `sourceForSeat[i]` (falling
+   * back to `source`) so the referee's `require_auth()` sees the seat
+   * owner's signature. Deploys always use `source`.
+   */
+  sourceForSeat?: Record<number, string>
 }
 
 /** Strips a leading `0x` from a hex string (Bytes/BytesN CLI args are hex WITHOUT `0x`). */
@@ -103,6 +110,7 @@ export class CliRefereeClient {
   private readonly stellarBin: string
   private readonly retries: number
   private readonly retryDelayMs: number
+  private readonly sourceForSeat: Record<number, string>
 
   constructor(opts: CliRefereeClientOptions = {}) {
     this.network = opts.network ?? 'testnet'
@@ -110,6 +118,7 @@ export class CliRefereeClient {
     this.stellarBin = opts.stellarBin ?? DEFAULT_STELLAR_BIN
     this.retries = opts.retries ?? 3
     this.retryDelayMs = opts.retryDelayMs ?? 3_000
+    this.sourceForSeat = opts.sourceForSeat ?? {}
   }
 
   /** `stellar contract deploy` for the `card_membership` verifier. Returns the deployed contract id. */
@@ -118,77 +127,83 @@ export class CliRefereeClient {
     return stdout.trim()
   }
 
-  /** `stellar contract deploy` for the coup referee. Returns the deployed contract id. */
-  async deployReferee(wasmPath: string, opts: { verifier: string; nPlayers: number }): Promise<string> {
+  /**
+   * `stellar contract deploy` for the coup referee. Returns the deployed
+   * contract id. `playerAddresses[i]` becomes seat i's owner — every seat-i
+   * action must then be signed by that address (require_auth).
+   */
+  async deployReferee(wasmPath: string, opts: { verifier: string; playerAddresses: string[] }): Promise<string> {
     const stdout = await this.runDeploy(wasmPath, [
       '--verifier',
       opts.verifier,
-      '--n_players',
-      String(opts.nPlayers),
+      '--players',
+      JSON.stringify(opts.playerAddresses),
     ])
     return stdout.trim()
   }
 
   async deal(refereeId: string, opts: { player: number; commitmentsHex: string[] }): Promise<void> {
-    await this.invoke(refereeId, [
-      'deal',
-      '--player',
-      String(opts.player),
-      '--commitments',
-      JSON.stringify(opts.commitmentsHex.map(stripHexPrefix)),
-    ])
+    await this.invoke(
+      refereeId,
+      ['deal', '--player', String(opts.player), '--commitments', JSON.stringify(opts.commitmentsHex.map(stripHexPrefix))],
+      opts.player,
+    )
   }
 
   async claim(refereeId: string, opts: { player: number; character: number }): Promise<void> {
-    await this.invoke(refereeId, [
-      'claim',
-      '--player',
-      String(opts.player),
-      '--character',
-      String(opts.character),
-    ])
+    await this.invoke(
+      refereeId,
+      ['claim', '--player', String(opts.player), '--character', String(opts.character)],
+      opts.player,
+    )
   }
 
   async challenge(refereeId: string, opts: { challenger: number; target: number }): Promise<void> {
-    await this.invoke(refereeId, [
-      'challenge',
-      '--challenger',
-      String(opts.challenger),
-      '--target',
-      String(opts.target),
-    ])
+    await this.invoke(
+      refereeId,
+      ['challenge', '--challenger', String(opts.challenger), '--target', String(opts.target)],
+      opts.challenger,
+    )
   }
 
   async proveHold(
     refereeId: string,
     opts: { target: number; claimed: number; proofHex: string },
   ): Promise<void> {
-    await this.invoke(refereeId, [
-      'prove_hold',
-      '--target',
-      String(opts.target),
-      '--claimed',
-      String(opts.claimed),
-      '--proof',
-      stripHexPrefix(opts.proofHex),
-    ])
+    await this.invoke(
+      refereeId,
+      [
+        'prove_hold',
+        '--target',
+        String(opts.target),
+        '--claimed',
+        String(opts.claimed),
+        '--proof',
+        stripHexPrefix(opts.proofHex),
+      ],
+      opts.target,
+    )
   }
 
   async revealCard(
     refereeId: string,
     opts: { player: number; slot: number; card: number; saltHex: string },
   ): Promise<void> {
-    await this.invoke(refereeId, [
-      'reveal_card',
-      '--player',
-      String(opts.player),
-      '--slot',
-      String(opts.slot),
-      '--card',
-      String(opts.card),
-      '--salt',
-      stripHexPrefix(opts.saltHex),
-    ])
+    await this.invoke(
+      refereeId,
+      [
+        'reveal_card',
+        '--player',
+        String(opts.player),
+        '--slot',
+        String(opts.slot),
+        '--card',
+        String(opts.card),
+        '--salt',
+        stripHexPrefix(opts.saltHex),
+      ],
+      opts.player,
+    )
   }
 
   async gameState(refereeId: string): Promise<ChainGameState> {
@@ -214,15 +229,20 @@ export class CliRefereeClient {
     return this.execWithRetry(args)
   }
 
-  /** Mutating call (`--send=yes`). */
-  private async invoke(contractId: string, methodArgs: string[]): Promise<string> {
+  /**
+   * Mutating call (`--send=yes`). When `seat` is given, signs with that
+   * seat's identity (`sourceForSeat[seat]`, falling back to `source`) so
+   * the referee's per-seat `require_auth()` is satisfied.
+   */
+  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<string> {
+    const source = seat !== undefined ? (this.sourceForSeat[seat] ?? this.source) : this.source
     const args = [
       'contract',
       'invoke',
       '--id',
       contractId,
       '--source',
-      this.source,
+      source,
       '--network',
       this.network,
       '--send=yes',
