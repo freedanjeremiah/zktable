@@ -63,9 +63,11 @@ interface MatchStore {
 ```
 
 - `MemoryMatchStore`: today's `globalThis` Map, now storing records.
-- `RedisMatchStore` (ioredis): `zktable:match:{id}` JSON string with a 24 h
-  TTL refreshed on save (solves unbounded growth), plus a
-  `zktable:open-matches` set for the lobby. Selected at startup:
+- `RedisMatchStore` (ioredis): `zktable:match:{id}` JSON string with a
+  **7-day** TTL refreshed on save (amended from 24 h — long enough to resume
+  a bookmarked match whose contracts stay live on testnet), plus a
+  `zktable:open-matches` set for the lobby. Saves are compare-and-set on an
+  embedded `revision` (Lua CAS; stale writers get 409). Selected at startup:
   `process.env.REDIS_URL ? redis : memory`.
 - A per-process hydration cache keyed by `id` + `updatedAt` keeps the hot
   path cheap (hydrating replays the log only when the record changed

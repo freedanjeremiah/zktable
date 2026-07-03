@@ -25,13 +25,25 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       { status: 400 },
     );
   }
+  const cNewHex = body.cNewHex.replace(/^0x/i, "");
+  const proofHex = body.proofHex.replace(/^0x/i, "");
+  if (!/^[0-9a-f]{64}$/i.test(cNewHex)) {
+    return NextResponse.json({ error: "cNewHex must be 32 bytes of hex" }, { status: 400 });
+  }
+  // UltraHonk proofs are exactly 14592 bytes (see @zktable/prover-web).
+  if (!/^[0-9a-f]+$/i.test(proofHex) || proofHex.length !== 14592 * 2) {
+    return NextResponse.json({ error: "proofHex must be a 14592-byte hex UltraHonk proof" }, { status: 400 });
+  }
+  if (!Number.isInteger(body.ticket) || body.ticket < 0 || body.ticket > 2) {
+    return NextResponse.json({ error: "ticket must be 0, 1, or 2" }, { status: 400 });
+  }
 
   try {
     const match = await requireMatch(id);
     const { round } = await submitPhantomMove(match, {
-      cNewHex: body.cNewHex,
+      cNewHex,
       ticket: body.ticket,
-      proofHex: body.proofHex,
+      proofHex,
       sessionToken: readSessionToken(request),
     });
     // On a reveal round the Phantom must reveal BEFORE investigators move
@@ -39,7 +51,9 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
     // browser follows up with POST .../phantom-reveal, which advances AI.
     const isRevealRound = (match.config.revealRounds ?? []).includes(round);
     if (!isRevealRound) await advanceAiTurns(match);
-    return NextResponse.json(await fetchDto(match));
+    // Only reuse the cached read when advanceAiTurns just refreshed it — on
+    // reveal rounds the cache predates the hidden move we just landed.
+    return NextResponse.json(await fetchDto(match, { reuseCachedState: !isRevealRound }));
   } catch (err) {
     const status = err instanceof BlackoutApiError ? err.status : 500;
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status });

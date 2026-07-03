@@ -26,7 +26,9 @@ export type ProofStatus = {
 };
 
 export type MatchEvent =
-  | { type: "hidden_move"; round: number; player: PlayerId; to: number; ticket: number; txOk: boolean; at: number }
+  // `to` is null when the position is browser-held (human Phantom, M8.5) —
+  // the server never learns it, and consumers must not treat it as a node.
+  | { type: "hidden_move"; round: number; player: PlayerId; to: number | null; ticket: number; txOk: boolean; at: number }
   | { type: "public_move"; round: number; player: PlayerId; to: number; ticket: number; txOk: boolean; at: number }
   | { type: "reveal"; round: number; player: PlayerId; node: number; at: number }
   | { type: "error"; message: string; at: number };
@@ -83,6 +85,13 @@ export type MatchRuntime = {
   phantomHuman: boolean;
   /** Waiting for the browser to commit the Phantom's hidden start. */
   pendingPhantomStart: boolean;
+  /** The wallet seat's prepared-but-unsigned move: the server records THIS
+   *  (not client-resent plaintext) when the signed envelope lands, so the
+   *  log/mirror can never diverge from what was actually signed. */
+  pendingWalletMove?: { player: number; node: number; ticket: number; xdr: string };
+  /** Optimistic-concurrency revision — incremented on every save; the store
+   *  rejects a save whose base revision is stale (lost-update guard). */
+  revision?: number;
 };
 
 export type MatchSummary = {
@@ -90,7 +99,17 @@ export type MatchSummary = {
   createdAt: number;
   refereeId: string;
   openSeats: PlayerId[];
+  /** 'lobby' while a start (wallet or phantom) is still pending, else 'active'. */
+  status: "lobby" | "active";
 };
+
+/** Thrown by a store when a save's base revision is stale (concurrent writer won). */
+export class StoreConflictError extends Error {
+  constructor(id: string) {
+    super(`match ${id} was updated concurrently`);
+    this.name = "StoreConflictError";
+  }
+}
 
 /** The narrow persistence interface (spec M8.4). */
 export interface MatchStore {
@@ -112,6 +131,10 @@ function recordMap(): Map<string, MatchRecord> {
 
 export class MemoryMatchStore implements MatchStore {
   async save(record: MatchRecord): Promise<void> {
+    const stored = recordMap().get(record.id);
+    if ((stored?.revision ?? 0) !== record.revision - 1) {
+      throw new StoreConflictError(record.id);
+    }
     recordMap().set(record.id, record);
   }
   async load(id: string): Promise<MatchRecord | null> {
@@ -129,8 +152,26 @@ export class MemoryMatchStore implements MatchStore {
 
 const MATCH_KEY_PREFIX = "zktable:match:";
 const OPEN_SET_KEY = "zktable:open-matches";
-/** Matches evaporate a day after their last write — solves unbounded growth. */
-const MATCH_TTL_SECONDS = 24 * 60 * 60;
+/** Matches evaporate a week after their last write — long enough to resume a
+ *  bookmarked match (its contracts stay live on testnet), short enough to
+ *  solve unbounded growth. */
+const MATCH_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/** Compare-and-set save: rejects unless the stored record's revision equals
+ *  the incoming record's revision - 1 (missing record counts as revision 0). */
+const CAS_SAVE_LUA = `
+local cur = redis.call('GET', KEYS[1])
+if cur then
+  local ok, obj = pcall(cjson.decode, cur)
+  local rev = 0
+  if ok and type(obj) == 'table' and obj.revision then rev = obj.revision end
+  if rev ~= tonumber(ARGV[2]) then return 0 end
+elseif tonumber(ARGV[2]) ~= 0 then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[3])
+return 1
+`;
 
 /** The subset of ioredis this store uses — injectable for tests. */
 export type RedisLike = {
@@ -140,6 +181,7 @@ export type RedisLike = {
   sadd(key: string, member: string): Promise<unknown>;
   srem(key: string, member: string): Promise<unknown>;
   smembers(key: string): Promise<string[]>;
+  eval(script: string, numKeys: number, ...keysAndArgs: Array<string | number>): Promise<unknown>;
 };
 
 export class RedisMatchStore implements MatchStore {
@@ -147,11 +189,26 @@ export class RedisMatchStore implements MatchStore {
 
   static async connect(url: string): Promise<RedisMatchStore> {
     const { default: Redis } = await import("ioredis");
-    return new RedisMatchStore(new Redis(url) as unknown as RedisLike);
+    // Bounded failure, not infinite buffering: a down Redis must surface as
+    // an error the routes can turn into a 503, not a hung request.
+    const redis = new Redis(url, {
+      maxRetriesPerRequest: 2,
+      enableOfflineQueue: false,
+      connectTimeout: 3_000,
+    });
+    return new RedisMatchStore(redis as unknown as RedisLike);
   }
 
   async save(record: MatchRecord): Promise<void> {
-    await this.redis.set(MATCH_KEY_PREFIX + record.id, JSON.stringify(record), "EX", MATCH_TTL_SECONDS);
+    const landed = await this.redis.eval(
+      CAS_SAVE_LUA,
+      1,
+      MATCH_KEY_PREFIX + record.id,
+      JSON.stringify(record),
+      record.revision - 1,
+      MATCH_TTL_SECONDS,
+    );
+    if (landed !== 1) throw new StoreConflictError(record.id);
     if (record.open) {
       await this.redis.sadd(OPEN_SET_KEY, record.id);
     } else {
@@ -166,12 +223,14 @@ export class RedisMatchStore implements MatchStore {
 
   async listOpen(): Promise<MatchRecord[]> {
     const ids = await this.redis.smembers(OPEN_SET_KEY);
+    const loaded = await Promise.all(ids.map(async (id) => ({ id, record: await this.load(id) })));
     const out: MatchRecord[] = [];
-    for (const id of ids) {
-      const record = await this.load(id);
-      if (record?.open) out.push(record);
-      else await this.redis.srem(OPEN_SET_KEY, id); // expired or closed — tidy the index
-    }
+    await Promise.all(
+      loaded.map(async ({ id, record }) => {
+        if (record?.open) out.push(record);
+        else await this.redis.srem(OPEN_SET_KEY, id); // expired or closed — tidy the index
+      }),
+    );
     return out;
   }
 
@@ -189,9 +248,15 @@ const STORE_KEY = "__zktableBlackoutMatchStore__";
 export async function resolveStore(): Promise<MatchStore> {
   const g = globalThis as unknown as Record<string, MatchStore | Promise<MatchStore> | undefined>;
   if (!g[STORE_KEY]) {
-    g[STORE_KEY] = process.env.REDIS_URL
+    const pending = process.env.REDIS_URL
       ? RedisMatchStore.connect(process.env.REDIS_URL)
       : Promise.resolve(new MemoryMatchStore());
+    g[STORE_KEY] = pending;
+    // A failed connect must not be memoized forever — clear the slot so the
+    // next request retries instead of re-awaiting the same rejection.
+    void Promise.resolve(pending).catch(() => {
+      if (g[STORE_KEY] === pending) g[STORE_KEY] = undefined;
+    });
   }
   return g[STORE_KEY]!;
 }
@@ -216,17 +281,44 @@ function hydrationCache(): Map<string, CacheEntry> {
 
 type BuildAgent = (model: string | undefined, role: "phantom" | "investigator") => Agent;
 
+/** Maps store/backing failures to HTTP-meaningful errors (409 conflict, 503 unavailable). */
+async function withStoreErrors<T>(op: () => Promise<T>): Promise<T> {
+  const { BlackoutApiError } = await import("./errors");
+  try {
+    return await op();
+  } catch (err) {
+    if (err instanceof StoreConflictError) {
+      throw new BlackoutApiError(409, "match was updated concurrently — refetch and retry");
+    }
+    if (err instanceof BlackoutApiError) throw err;
+    console.error("[match-store] store operation failed:", err);
+    throw new BlackoutApiError(503, "match store unavailable");
+  }
+}
+
 export async function saveMatch(runtime: MatchRuntime): Promise<void> {
   const { toRecord } = await import("./match-record");
+  runtime.revision = (runtime.revision ?? 0) + 1;
   const record = toRecord(runtime);
-  const store = await resolveStore();
-  await store.save(record);
+  try {
+    await withStoreErrors(async () => {
+      const store = await resolveStore();
+      await store.save(record);
+    });
+  } catch (err) {
+    // This runtime lost the race (or the store is down) — drop it from the
+    // cache so the next request rehydrates the winning record.
+    hydrationCache().delete(runtime.id);
+    throw err;
+  }
   hydrationCache().set(runtime.id, { updatedAt: record.updatedAt, runtime });
 }
 
 export async function getMatch(id: string, buildAgent: BuildAgent): Promise<MatchRuntime | undefined> {
-  const store = await resolveStore();
-  const record = await store.load(id);
+  const record = await withStoreErrors(async () => {
+    const store = await resolveStore();
+    return store.load(id);
+  });
   if (!record) {
     hydrationCache().delete(id);
     return undefined;
@@ -236,14 +328,21 @@ export async function getMatch(id: string, buildAgent: BuildAgent): Promise<Matc
     return cached.runtime;
   }
   const { hydrateRecord } = await import("./match-record");
-  const runtime = hydrateRecord(record, buildAgent);
-  hydrationCache().set(id, { updatedAt: record.updatedAt, runtime });
-  return runtime;
+  try {
+    const runtime = hydrateRecord(record, buildAgent);
+    hydrationCache().set(id, { updatedAt: record.updatedAt, runtime });
+    return runtime;
+  } catch (err) {
+    console.error(`[match-store] failed to hydrate match ${id} (record v${record.version}):`, err);
+    throw err;
+  }
 }
 
 export async function listOpenMatches(): Promise<MatchSummary[]> {
-  const store = await resolveStore();
-  const records = await store.listOpen();
+  const records = await withStoreErrors(async () => {
+    const store = await resolveStore();
+    return store.listOpen();
+  });
   return records
     .sort((a, b) => b.createdAt - a.createdAt)
     .map((r) => ({
@@ -253,6 +352,7 @@ export async function listOpenMatches(): Promise<MatchSummary[]> {
       openSeats: Object.entries(r.seats)
         .filter(([, seat]) => seat.open && !seat.token)
         .map(([playerId]) => playerId),
+      status: r.pendingStart || r.pendingPhantomStart ? "lobby" : "active",
     }));
 }
 

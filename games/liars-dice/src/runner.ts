@@ -48,19 +48,11 @@ export function stepLocalMatch(match: Match, seed: string): LocalStep {
   const playerId = match.state.turn.current
   const view = match.view(playerId)
   const moveSeed = `${seed}:bid${(match.state.public.bidHistory as unknown[]).length}:${playerId}`
-  const roundBefore = match.state.public.roundNumber as number
   const move = chooseMove(view, moveSeed)
   match.submit(playerId, move)
-  // A challenge that continues the game re-rolls every alive player (M8.2
-  // multi-round). `apply` is pure over public state, so mirror the fresh
-  // rolls back into each player's secret here (same setSecret pattern as
-  // Blackout's stepLocalMatch).
-  if (match.state.status === 'active' && (match.state.public.roundNumber as number) !== roundBefore) {
-    const rolls = match.state.public.diceByPlayer as Record<PlayerId, number[]>
-    for (const [id, dice] of Object.entries(rolls)) {
-      match.setSecret(id, { dice })
-    }
-  }
+  // Multi-round re-rolls live in `public.diceByPlayer`; `strategy.ts`'s
+  // ownDice reads the own-id mirror entry directly, so no out-of-band
+  // secret re-sync is needed here.
   if (move.type === 'bid') {
     return { playerId, move: { type: 'bid', quantity: move.quantity as number, face: move.face as number } }
   }

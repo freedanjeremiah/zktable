@@ -20,10 +20,14 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (!body || typeof body.commitmentHex !== "string") {
     return NextResponse.json({ error: "request body must be { commitmentHex: string }" }, { status: 400 });
   }
+  const commitmentHex = body.commitmentHex.replace(/^0x/i, "");
+  if (!/^[0-9a-f]{64}$/i.test(commitmentHex)) {
+    return NextResponse.json({ error: "commitmentHex must be 32 bytes of hex" }, { status: 400 });
+  }
 
   try {
     const match = await requireMatch(id);
-    await submitPhantomStart(match, { commitmentHex: body.commitmentHex, sessionToken: readSessionToken(request) });
+    await submitPhantomStart(match, { commitmentHex, sessionToken: readSessionToken(request) });
     return NextResponse.json(await fetchDto(match));
   } catch (err) {
     const status = err instanceof BlackoutApiError ? err.status : 500;

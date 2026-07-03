@@ -1,16 +1,18 @@
-// `CardProver` - orchestrates the full `card_membership` pipeline against
-// REAL tools (mirrors `games/liars-dice/src/dice-prover.ts`'s shape, which
-// itself mirrors `@zktable/circuits`'s `BoardProver`): writes the witness via
-// `zktable-graph card-witness`/`deal`, executes the circuit via `nargo`, and
-// proves via `bb`. No mocks - every call produces a real UltraHonk proof over
-// a real committed hand.
+// `CardProver` - orchestrates the full `card_membership` + `valid_shuffle`
+// pipelines against REAL tools (mirrors `games/liars-dice/src/dice-prover.ts`'s
+// shape, which itself mirrors `@zktable/circuits`'s `BoardProver`): writes
+// witnesses via `zktable-graph card-witness`/`shuffle-witness`, executes the
+// circuits via `nargo`, and proves via `bb`. No mocks - every call produces a
+// real UltraHonk proof.
 //
-// HONEST SIMPLIFICATION (see `liars-dice.ts`... no, see `coup-lite.ts`'s
-// module doc / the coup-referee's module doc / PRD SS7.2): hands are dealt by
-// a semi-honest orchestrator (this class, off-chain) - not a ZK-proven valid
-// shuffle. The `card_membership` proof this class produces IS the real,
-// load-bearing ZK: it proves a claimed character is genuinely in a player's
-// committed hand without revealing which card, or the other card's identity.
+// PROVABLY FAIR DEAL (M8.3, deck v1.5 - see `coup-lite.ts`'s and the
+// coup-referee's module docs): `proveShuffle` derives the UNIQUE seed-forced
+// permutation of the canonical 15-card deck and proves it; hands are then
+// fixed deck positions, so the dealer cannot choose the deal - only learn it
+// (dealer card-privacy is deck v2 / mental-poker territory). `proveHold`
+// remains the load-bearing in-play ZK: it proves a claimed character is
+// genuinely in a player's committed hand without revealing which card, or
+// the other card's identity.
 
 import { execFile } from 'node:child_process'
 import { mkdtemp, readFile, rm, access } from 'node:fs/promises'
@@ -28,12 +30,6 @@ import {
 
 const execFileAsync = promisify(execFile)
 
-type DealJson = {
-  cards: string[]
-  salts: string[]
-  commitments: string[]
-}
-
 type CardWitnessJson = {
   claimed_card: string
   held_index: number
@@ -41,8 +37,6 @@ type CardWitnessJson = {
   commitments: string[]
   public_inputs: string
 }
-
-export type DealtHand = { commitmentsHex: [string, string] }
 
 export type CardProof = {
   proof: Uint8Array
@@ -284,23 +278,6 @@ export class CardProver {
   }
 
   /**
-   * `zktable-graph deal --cards c0,c1 --salts s0,s1` - the (semi-honest,
-   * off-chain) dealer's per-card commitments for one player's hand. See the
-   * module doc: this does NOT prove a valid shuffle over a shared deck.
-   */
-  async deal(cards: [bigint, bigint], salts: [bigint, bigint]): Promise<DealtHand> {
-    const { stdout } = await execFileAsync(
-      this.graphToolsBin,
-      ['deal', '--cards', cards.join(','), '--salts', salts.join(',')],
-      { env: this.env },
-    )
-    const parsed = JSON.parse(stdout) as DealJson
-    const [c0, c1] = parsed.commitments
-    if (!c0 || !c1) throw new Error('deal: expected exactly 2 commitments')
-    return { commitmentsHex: [c0, c1] }
-  }
-
-  /**
    * Full pipeline for one "prove-hold" claim: `zktable-graph card-witness` ->
    * `nargo execute` -> `bb prove`. Runs entirely inside an isolated temp dir;
    * never touches `card_membership/Prover.toml` or `card_membership/target/`
@@ -386,6 +363,16 @@ export class CardProver {
   /** Off-chain check via `bb verify`, useful for sanity-checking a proof before spending a testnet tx. */
   async verifyLocally(proof: Uint8Array, publicInputs: Uint8Array): Promise<boolean> {
     await this.ensureVk()
+    return this.bbVerify(proof, publicInputs, this.vkPath)
+  }
+
+  /** Off-chain `bb verify` of a `valid_shuffle` proof against ITS verification key. */
+  async shuffleLocalVerify(proof: Uint8Array, publicInputs: Uint8Array): Promise<boolean> {
+    await this.ensureShuffleVk()
+    return this.bbVerify(proof, publicInputs, this.shuffleVkPath)
+  }
+
+  private async bbVerify(proof: Uint8Array, publicInputs: Uint8Array, vkPath: string): Promise<boolean> {
     const dir = await mkdtemp(path.join(this.workDir, 'zktable-card-verify-'))
     try {
       const { writeFile } = await import('node:fs/promises')
@@ -405,7 +392,7 @@ export class CardProver {
             '--proof_path',
             proofPath,
             '--vk_path',
-            this.vkPath,
+            vkPath,
             '--public_inputs_path',
             publicInputsPath,
           ],

@@ -32,6 +32,13 @@ export function poseidon2(a: bigint, b: bigint): bigint {
   return frToBigInt(sync.poseidon2Hash([toFr(a), toFr(b)]));
 }
 
+/** Lowercase hex (no 0x prefix) for arbitrary bytes — proofs, salts, blobs. */
+export function bytesToHex(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) out += b.toString(16).padStart(2, "0");
+  return out;
+}
+
 /** 32-byte big-endian hex (no 0x prefix) — the CLI/contract Bytes encoding. */
 export function toBe32Hex(value: bigint): string {
   if (value < 0n) throw new Error("toBe32Hex: value must be non-negative");

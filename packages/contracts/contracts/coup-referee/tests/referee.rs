@@ -630,3 +630,30 @@ fn wrong_signer_cannot_act_for_a_seat() {
     let state = game_state(&env, &referee_id);
     assert!(state.players.get(0).unwrap().seed_committed);
 }
+
+#[test]
+fn shuffle_rejects_non_matching_leaves() {
+    // A syntactically valid 15-leaf deck whose VALUES don't match the ones
+    // the (real, honest) proof was generated over: the referee rebuilds
+    // public_inputs from the SUBMITTED leaves + its stored seed, so the
+    // proof no longer verifies — a dealer cannot swap a card in after
+    // proving. (Completes the tampered/wrong-seed/wrong-count matrix.)
+    let env = setup_env();
+    let card_vrf = register_card_verifier(&env);
+    let shuffle_vrf = register_shuffle_verifier(&env);
+    let referee_id = register_referee(&env, card_vrf, shuffle_vrf, 2);
+    commit_reveal_fixture_nonces(&env, &referee_id);
+
+    let mut leaves = deck_leaves(&env);
+    let swapped = hash2(&env, &be32(&env, 4), &be32(&env, 999_999));
+    leaves.set(0, swapped);
+
+    let proof = Bytes::from_slice(&env, SHUFFLE_PROOF_BIN);
+    let err = env
+        .as_contract(&referee_id, || {
+            CoupRefereeContract::submit_shuffle(env.clone(), leaves, proof)
+        })
+        .expect_err("expected VerificationFailed");
+    assert_eq!(err, Error::VerificationFailed);
+    assert_eq!(game_state(&env, &referee_id).phase, Phase::Shuffle);
+}

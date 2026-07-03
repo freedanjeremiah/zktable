@@ -5,9 +5,19 @@
 // server only ever sees commitments, tickets, and proof bytes.
 
 import type { WebBoardProver } from "@zktable/prover-web";
+import { bytesToHex } from "@zktable/prover-web";
 import { CITY_GRAPH } from "../board/city-graph";
+import { movesFrom } from "../board/shadow";
 
-export type PhantomSecret = { pos: number; salt: string };
+export type PhantomSecret = {
+  pos: number;
+  salt: string;
+  /** The next (pos, salt) staged by a proven-but-unconfirmed move. Promoted
+   *  only after the server accepts the submission — rotating eagerly would
+   *  destroy the only copy of the CURRENT salt and brick the match if the
+   *  POST fails. */
+  pending?: { pos: number; salt: string };
+};
 
 const STORAGE_PREFIX = "zktable-phantom-";
 
@@ -20,11 +30,25 @@ export function savePhantomSecret(matchId: string, secret: PhantomSecret): void 
   localStorage.setItem(STORAGE_PREFIX + matchId, JSON.stringify(secret));
 }
 
+/** Promote the staged move after the server confirmed the submission landed. */
+export function confirmPhantomMove(matchId: string): void {
+  const secret = loadPhantomSecret(matchId);
+  if (!secret?.pending) return;
+  savePhantomSecret(matchId, { pos: secret.pending.pos, salt: secret.pending.salt });
+}
+
+/** Drop the staged move after a failed submission (the current secret stays authoritative). */
+export function discardPendingPhantomMove(matchId: string): void {
+  const secret = loadPhantomSecret(matchId);
+  if (!secret?.pending) return;
+  savePhantomSecret(matchId, { pos: secret.pos, salt: secret.salt });
+}
+
 /** A cryptographically random field-sized salt (browser webcrypto). */
 export function randomSaltHex(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
-  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return bytesToHex(bytes);
 }
 
 /** A random starting node for the Phantom. */
@@ -40,13 +64,7 @@ export type PhantomMoveOption = { to: number; ticket: 0 | 1 | 2 };
 /** Legal phantom moves from the secret position, filtered by remaining tickets. */
 export function phantomLegalMoves(pos: number, tickets: { taxi: number; bus: number; rail: number }): PhantomMoveOption[] {
   const remaining = [tickets.taxi, tickets.bus, tickets.rail];
-  const moves: PhantomMoveOption[] = [];
-  for (const edge of CITY_GRAPH.edges) {
-    if ((remaining[edge.ticket] ?? 0) === 0) continue;
-    if (edge.from === pos) moves.push({ to: edge.to, ticket: edge.ticket });
-    else if (CITY_GRAPH.bidirectional && edge.to === pos) moves.push({ to: edge.from, ticket: edge.ticket });
-  }
-  return moves;
+  return movesFrom(CITY_GRAPH, pos).filter(({ ticket }) => (remaining[ticket] ?? 0) > 0);
 }
 
 let proverPromise: Promise<WebBoardProver> | null = null;
@@ -82,8 +100,9 @@ export async function preparePhantomStart(matchId: string): Promise<{ commitment
 }
 
 /**
- * Proves one hidden move IN THE BROWSER and rotates the stored secret.
- * Returns the payload for POST .../phantom-move.
+ * Proves one hidden move IN THE BROWSER and STAGES the rotated secret
+ * (promotion happens via `confirmPhantomMove` only after the server accepts
+ * the submission). Returns the payload for POST .../phantom-move.
  */
 export async function provePhantomMove(
   matchId: string,
@@ -100,11 +119,11 @@ export async function provePhantomMove(
     saltOld: BigInt(`0x${secret.salt}`),
     saltNew: BigInt(`0x${saltNew}`),
   });
-  savePhantomSecret(matchId, { pos: move.to, salt: saltNew });
+  savePhantomSecret(matchId, { pos: secret.pos, salt: secret.salt, pending: { pos: move.to, salt: saltNew } });
   return {
     cNewHex: proof.cNewHex,
     ticket: move.ticket,
-    proofHex: [...proof.proof].map((b) => b.toString(16).padStart(2, "0")).join(""),
+    proofHex: bytesToHex(proof.proof),
   };
 }
 

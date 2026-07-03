@@ -53,7 +53,7 @@ contract one. Proof anti-replay (§7) is likewise unchanged.
 
 **Improved in M8.4:** matches are persisted as serializable `MatchRecord`s
 behind a `MatchStore` interface (`packages/web/lib/blackout/match-store.ts`).
-With `REDIS_URL` set, records live in Redis (24 h TTL) and survive server
+With `REDIS_URL` set, records live in Redis (7-day TTL, CAS-guarded saves) and survive server
 restarts; live runtimes are rehydrated by replaying the match's own event
 log through a fresh engine mirror (`match-record.ts`). Matches are
 resumable by URL (`/play/blackout?match=<id>`), human seats are bound to a

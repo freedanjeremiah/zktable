@@ -10,7 +10,7 @@ import { readFile } from "node:fs/promises";
 import { BoardGraph, BoardProver } from "@zktable/circuits";
 import type { Agent } from "@zktable/agents";
 import { ClaudeAgent, HeuristicAgent } from "@zktable/agents";
-import type { PlayerId } from "@zktable/core";
+import type { PlayerId, PlayerView } from "@zktable/core";
 import {
   CITY,
   CliRefereeClient,
@@ -299,7 +299,7 @@ export async function completeSignedStart(runtime: MatchRuntime, signedXdr: stri
   await sendSignedTx(runtime.network, signedXdr);
   await runtime.client.start(runtime.refereeId);
   runtime.pendingStart = undefined;
-  saveMatch(runtime);
+  await saveMatch(runtime);
 }
 
 export async function requireMatch(matchId: string): Promise<MatchRuntime> {
@@ -308,8 +308,17 @@ export async function requireMatch(matchId: string): Promise<MatchRuntime> {
   return runtime;
 }
 
-export async function fetchDto(runtime: MatchRuntime): Promise<MatchDto> {
-  const state = await runtime.client.gameState(runtime.refereeId);
+export async function fetchDto(
+  runtime: MatchRuntime,
+  opts: { reuseCachedState?: boolean } = {},
+): Promise<MatchDto> {
+  // Mutation routes end with advanceAiTurns, whose exit condition already
+  // read the current chain state — reuse it instead of a duplicate
+  // subprocess+RPC round trip. GET paths pass nothing and stay fresh.
+  const state =
+    opts.reuseCachedState && runtime.lastChainState
+      ? runtime.lastChainState
+      : await runtime.client.gameState(runtime.refereeId);
   runtime.lastChainState = state;
   if (!runtime.phantomHuman) return toDto(state, runtime);
   // Human-Phantom matches have no engine mirror: investigator legality comes
@@ -392,7 +401,7 @@ export async function submitPhantomMove(
       type: "hidden_move",
       round: state.round,
       player: "phantom",
-      to: -1, // unknown to the server by design (browser-held secret)
+      to: null, // unknown to the server by design (browser-held secret)
       ticket: opts.ticket,
       txOk: true,
       at: Date.now(),
@@ -414,13 +423,16 @@ export async function submitPhantomReveal(
   opts: { node: number; saltHex: string; sessionToken?: string },
 ): Promise<void> {
   assertPhantomSession(runtime, opts.sessionToken);
-  const state = await runtime.client.gameState(runtime.refereeId);
+  // The preceding phantom-move request just cached the chain state; the
+  // round is only needed for the log entry, so avoid a dedicated read.
+  const round =
+    runtime.lastChainState?.round ?? (await runtime.client.gameState(runtime.refereeId)).round;
   await runtime.client.reveal(runtime.refereeId, {
     player: phantomSeatIndex(runtime),
     node: opts.node,
     saltHex: opts.saltHex,
   });
-  runtime.log.push({ type: "reveal", round: state.round, player: "phantom", node: opts.node, at: Date.now() });
+  runtime.log.push({ type: "reveal", round, player: "phantom", node: opts.node, at: Date.now() });
   await saveMatch(runtime);
 }
 
@@ -511,7 +523,7 @@ function recordHumanMove(
  */
 export async function prepareHumanMove(
   runtime: MatchRuntime,
-  opts: { player: number; node: number; ticket: number },
+  opts: { player: number; node: number; ticket: number; sessionToken?: string },
 ): Promise<{ xdr: string }> {
   if (!runtime.walletSeat || runtime.walletSeat.player !== opts.player) {
     throw new BlackoutApiError(400, `player ${opts.player} is not the wallet-bound seat — use POST /moves`);
@@ -524,6 +536,10 @@ export async function prepareHumanMove(
     method: "submit_public_move",
     methodArgs: ["--player", String(opts.player), "--node", String(opts.node), "--ticket", String(opts.ticket)],
   });
+  // Stash the prepared move server-side: submit records THIS, never
+  // client-resent plaintext, so the log/mirror always match what was signed.
+  runtime.pendingWalletMove = { player: opts.player, node: opts.node, ticket: opts.ticket, xdr };
+  await saveMatch(runtime);
   return { xdr };
 }
 
@@ -532,9 +548,20 @@ export async function submitSignedHumanMove(
   runtime: MatchRuntime,
   opts: { player: number; node: number; ticket: number; signedXdr: string; sessionToken?: string },
 ): Promise<void> {
-  const { playerId, state } = await validateHumanMove(runtime, opts);
+  const pending = runtime.pendingWalletMove;
+  if (!pending) {
+    throw new BlackoutApiError(409, "no prepared move to submit — call POST .../moves/prepare first");
+  }
+  if (pending.player !== opts.player || pending.node !== opts.node || pending.ticket !== opts.ticket) {
+    throw new BlackoutApiError(
+      400,
+      "submitted move does not match the prepared one — re-prepare before signing a different move",
+    );
+  }
+  const { playerId, state } = await validateHumanMove(runtime, { ...pending, sessionToken: opts.sessionToken });
   await sendSignedTx(runtime.network, opts.signedXdr);
-  recordHumanMove(runtime, playerId, state.round, opts);
+  runtime.pendingWalletMove = undefined;
+  recordHumanMove(runtime, playerId, state.round, pending);
   await saveMatch(runtime);
 }
 
@@ -560,7 +587,14 @@ export async function advanceAiTurns(
 
   for (let step = 0; step < maxSteps; step++) {
     const state: ChainGameState = await runtime.client.gameState(runtime.refereeId);
+    runtime.lastChainState = state;
     if (state.status !== "Active") break;
+
+    // Reveal ordering (M8.5): on a reveal round, a human Phantom that has
+    // already moved must publish its reveal BEFORE investigators move —
+    // capture resolves against their CURRENT positions. Hold all AI turns
+    // until the browser's phantom-reveal lands.
+    if (humanPhantomRevealPending(runtime, state)) break;
 
     const currentId = runtime.indexToPlayer.get(state.current_player);
     if (!currentId) {
@@ -571,7 +605,7 @@ export async function advanceAiTurns(
 
     const rosterEntry = runtime.roster.find((p) => p.id === currentId)!;
     const view = runtime.phantomHuman
-      ? { ...runtime.local.view(currentId), legalMoves: legalPublicMovesFromChain(state, state.current_player) }
+      ? chainAgentView(runtime, state, currentId)
       : runtime.local.view(currentId);
     if (view.legalMoves.length === 0) {
       throw new Error(`advanceAiTurns: no legal moves available for "${currentId}"`);
@@ -616,8 +650,12 @@ export async function advanceAiTurns(
         const message = err instanceof Error ? err.message : String(err);
         runtime.lastProof = { ok: false, round, error: message, at: Date.now() };
         runtime.log.push({ type: "error", message: `Phantom hidden move failed: ${message}`, at: Date.now() });
+        await saveMatch(runtime);
         throw err;
       }
+      // Persist IMMEDIATELY: the hidden move (and the rotated phantom salt)
+      // are on-chain now — losing this write would brick every future proof.
+      await saveMatch(runtime);
 
       const revealRounds = runtime.config.revealRounds ?? DEFAULT_REVEAL_ROUNDS;
       if (revealRounds.includes(round)) {
@@ -627,6 +665,7 @@ export async function advanceAiTurns(
           saltHex: toBe32Hex(runtime.phantom.salt),
         });
         runtime.log.push({ type: "reveal", round, player: currentId, node: runtime.phantom.pos, at: Date.now() });
+        await saveMatch(runtime);
       }
     } else {
       await runtime.client.submitPublicMove(runtime.refereeId, {
@@ -644,11 +683,56 @@ export async function advanceAiTurns(
         txOk: true,
         at: Date.now(),
       });
+      // Persist each landed on-chain move: a later-iteration failure must
+      // not leave the durable record behind the chain.
+      await saveMatch(runtime);
     }
 
     movesPlayed++;
   }
 
-  if (movesPlayed > 0) await saveMatch(runtime);
   return { movesPlayed };
+}
+
+/** True while a human Phantom's reveal for the current round is still due. */
+function humanPhantomRevealPending(runtime: MatchRuntime, state: ChainGameState): boolean {
+  if (!runtime.phantomHuman) return false;
+  const phantomIdx = runtime.playerIndex.get("phantom");
+  if (phantomIdx === undefined || state.current_player === phantomIdx) return false; // phantom hasn't moved yet
+  const revealRounds = runtime.config.revealRounds ?? DEFAULT_REVEAL_ROUNDS;
+  if (!revealRounds.includes(state.round)) return false;
+  return !state.reveal_log.some(([round]) => round === state.round);
+}
+
+/**
+ * Faithful `PlayerView` for an AI investigator built from CHAIN state
+ * (M8.5): human-Phantom matches keep no engine mirror, and a frozen mirror
+ * view would leave agents reasoning from round-0 positions with no reveals.
+ * Field-for-field the shape `blackout`'s public state/agents expect.
+ */
+function chainAgentView(runtime: MatchRuntime, state: ChainGameState, playerId: PlayerId): PlayerView {
+  const idx = runtime.playerIndex.get(playerId)!;
+  const chainPlayer = state.players[idx];
+  const [taxi, bus, rail] = chainPlayer?.resources ?? [0, 0, 0];
+
+  const investigatorNodes: Record<PlayerId, number> = {};
+  for (const p of runtime.roster) {
+    if (p.role !== "investigator") continue;
+    const node = state.players[runtime.playerIndex.get(p.id)!]?.public_node;
+    if (node !== null && node !== undefined) investigatorNodes[p.id] = node;
+  }
+
+  return {
+    public: {
+      round: state.round,
+      nRounds: runtime.config.nRounds ?? DEFAULT_N_ROUNDS,
+      revealRounds: runtime.config.revealRounds ?? DEFAULT_REVEAL_ROUNDS,
+      ticketFeed: state.ticket_feed,
+      revealLog: state.reveal_log.map(([round, node]) => ({ round, node })),
+      investigatorNodes,
+    },
+    self: { id: playerId, role: "investigator", secret: {} },
+    tickets: { taxi, bus, rail },
+    legalMoves: legalPublicMovesFromChain(state, idx),
+  };
 }

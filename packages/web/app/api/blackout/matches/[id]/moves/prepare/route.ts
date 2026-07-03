@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { BlackoutApiError } from "@/lib/blackout/errors";
 import { prepareHumanMove, requireMatch } from "@/lib/blackout/orchestrator";
+import { readSessionToken } from "@/lib/blackout/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,7 +27,12 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
 
   try {
     const match = await requireMatch(id);
-    const { xdr } = await prepareHumanMove(match, { player: body.player, node: body.node, ticket: body.ticket });
+    const { xdr } = await prepareHumanMove(match, {
+      player: body.player,
+      node: body.node,
+      ticket: body.ticket,
+      sessionToken: readSessionToken(request),
+    });
     return NextResponse.json({ xdr });
   } catch (err) {
     const status = err instanceof BlackoutApiError ? err.status : 500;

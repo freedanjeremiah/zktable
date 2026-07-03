@@ -63,6 +63,12 @@ acceptable because contracts are deployed fresh per match (no migration).
 
 ### Rust tests
 
+> **Implementation amendment:** game-logic tests deliberately KEEP the
+> `as_contract` + `mock_all_auths()` structure (auth is orthogonal to what
+> they assert); the client + per-seat `mock_auths` migration applies to the
+> dedicated auth tests only, which include both the wrong-signer rejection
+> and a right-signer positive segment per referee.
+
 Tests currently call impl fns inside `env.as_contract(...)`, which bypasses
 auth. They move to the generated `Client` (`RefereeContractClient` etc.) with
 `env.mock_auths(...)`:

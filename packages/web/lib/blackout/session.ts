@@ -15,7 +15,17 @@ export function readSessionToken(request: Request): string | undefined {
   if (!header) return undefined;
   for (const part of header.split(";")) {
     const [name, ...rest] = part.trim().split("=");
-    if (name === SESSION_COOKIE) return rest.join("=") || undefined;
+    if (name === SESSION_COOKIE) {
+      const raw = rest.join("=");
+      if (!raw) return undefined;
+      // The write side (response.cookies.set) percent-encodes — decode
+      // symmetrically or a token with reserved chars never matches its seat.
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    }
   }
   return undefined;
 }

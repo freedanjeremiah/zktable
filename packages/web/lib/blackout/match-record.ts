@@ -47,6 +47,9 @@ export type MatchRecord = {
   open: boolean;
   phantomHuman: boolean;
   pendingPhantomStart: boolean;
+  pendingWalletMove?: { player: number; node: number; ticket: number; xdr: string };
+  /** Optimistic-concurrency revision (see match-store's CAS save). */
+  revision: number;
 };
 
 export function toRecord(runtime: MatchRuntime): MatchRecord {
@@ -79,6 +82,8 @@ export function toRecord(runtime: MatchRuntime): MatchRecord {
     open: runtime.open,
     phantomHuman: runtime.phantomHuman,
     pendingPhantomStart: runtime.pendingPhantomStart,
+    pendingWalletMove: runtime.pendingWalletMove,
+    revision: runtime.revision ?? 0,
   };
 }
 
@@ -106,7 +111,9 @@ export function hydrateRecord(
   for (const event of record.phantomHuman ? [] : record.log) {
     if (event.type === "public_move") {
       local.submit(event.player, { type: "move", to: event.to, ticket: event.ticket });
-    } else if (event.type === "hidden_move") {
+    } else if (event.type === "hidden_move" && event.to !== null) {
+      // `to === null` means browser-held secret (human Phantom) — those logs
+      // are never replayed (whole-log skip above), but guard regardless.
       local.submit(event.player, { type: "move", to: event.to, ticket: event.ticket });
       local.setSecret(event.player, { pos: event.to });
     }
@@ -145,5 +152,7 @@ export function hydrateRecord(
     open: record.open,
     phantomHuman: record.phantomHuman,
     pendingPhantomStart: record.pendingPhantomStart,
+    pendingWalletMove: record.pendingWalletMove,
+    revision: record.revision,
   };
 }

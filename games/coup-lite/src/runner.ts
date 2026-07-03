@@ -242,6 +242,9 @@ export async function playCoupLite(opts: PlayCoupLiteOptions = {}): Promise<Tran
   const deckSalts = Array.from({ length: 15 }, () => randomField())
   log('proving valid_shuffle (real UltraHonk proof - the seed forces the order)…')
   const shuffle = await prover.proveShuffle(seedHex, deckSalts)
+  if (!(await prover.shuffleLocalVerify(shuffle.proof, shuffle.publicInputs))) {
+    throw new Error('playCoupLite: valid_shuffle proof failed local verification — aborting before the on-chain tx')
+  }
   log('submitting submit_shuffle (ZK-verified on-chain; hands = deck positions)…')
   await client.submitShuffle(refereeContractId, {
     leavesHex: shuffle.leavesHex,

@@ -20,12 +20,16 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   if (!body || typeof body.node !== "number" || typeof body.saltHex !== "string") {
     return NextResponse.json({ error: "request body must be { node: number, saltHex: string }" }, { status: 400 });
   }
+  const saltHex = body.saltHex.replace(/^0x/i, "");
+  if (!/^[0-9a-f]{1,64}$/i.test(saltHex)) {
+    return NextResponse.json({ error: "saltHex must be up to 32 bytes of hex" }, { status: 400 });
+  }
 
   try {
     const match = await requireMatch(id);
-    await submitPhantomReveal(match, { node: body.node, saltHex: body.saltHex, sessionToken: readSessionToken(request) });
+    await submitPhantomReveal(match, { node: body.node, saltHex, sessionToken: readSessionToken(request) });
     await advanceAiTurns(match);
-    return NextResponse.json(await fetchDto(match));
+    return NextResponse.json(await fetchDto(match, { reuseCachedState: true }));
   } catch (err) {
     const status = err instanceof BlackoutApiError ? err.status : 500;
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status });

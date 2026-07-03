@@ -147,17 +147,33 @@ describe("MemoryMatchStore via saveMatch/getMatch", () => {
 });
 
 describe("RedisMatchStore", () => {
-  function fakeRedis(): RedisLike & { data: Map<string, string>; sets: Map<string, Set<string>> } {
+  function fakeRedis(): RedisLike & {
+    data: Map<string, string>;
+    sets: Map<string, Set<string>>;
+    ttls: Map<string, number>;
+  } {
     const data = new Map<string, string>();
     const sets = new Map<string, Set<string>>();
+    const ttls = new Map<string, number>();
     return {
       data,
       sets,
-      async set(key, value) {
+      ttls,
+      async set(key, value, _ex, seconds) {
         data.set(key, value);
+        ttls.set(key, seconds);
       },
       async get(key) {
         return data.get(key) ?? null;
+      },
+      // Mirrors CAS_SAVE_LUA: reject unless stored revision === expected.
+      async eval(_script, _numKeys, key, value, expected, ttl) {
+        const cur = data.get(String(key));
+        const rev = cur ? ((JSON.parse(cur).revision as number | undefined) ?? 0) : 0;
+        if (cur ? rev !== Number(expected) : Number(expected) !== 0) return 0;
+        data.set(String(key), String(value));
+        ttls.set(String(key), Number(ttl));
+        return 1;
       },
       async del(key) {
         data.delete(key);
@@ -175,17 +191,21 @@ describe("RedisMatchStore", () => {
     };
   }
 
-  it("saves, loads, indexes open matches, and tidies stale index entries", async () => {
+  it("saves with CAS + TTL, loads, indexes open matches, and tidies stale index entries", async () => {
     const redis = fakeRedis();
     const store = new RedisMatchStore(redis);
-    const record = toRecord(buildRuntime());
+    const record = { ...toRecord(buildRuntime()), revision: 1 };
 
     await store.save(record);
     expect(await store.load(record.id)).toEqual(JSON.parse(JSON.stringify(record)));
     expect((await store.listOpen()).map((r) => r.id)).toEqual([record.id]);
+    // Every save refreshes the TTL (records evaporate a week after the last write).
+    expect(redis.ttls.get(`zktable:match:${record.id}`)).toBe(7 * 24 * 60 * 60);
 
-    // Closing the match removes it from the open index.
-    await store.save({ ...record, open: false });
+    // A stale-revision save is rejected (lost-update guard)…
+    await expect(store.save({ ...record, open: false })).rejects.toThrow(/updated concurrently/);
+    // …while the successor revision lands and closes the match.
+    await store.save({ ...record, open: false, revision: 2 });
     expect(await store.listOpen()).toEqual([]);
 
     // A dangling index entry (expired record) is tidied on read.

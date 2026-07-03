@@ -342,3 +342,26 @@ these matches (investigator legality derives from the public graph —
 `legal-moves.ts`). Reveal ordering is preserved (the phantom-move route
 defers AI turns on reveal rounds until the reveal lands). COOP/COEP
 headers enable multithreaded WASM proving where available.
+
+### M8 review pass (post-implementation)
+
+A recall-biased multi-agent review of the whole M8 branch (8 finder angles
++ 2 spec-gap audits, every candidate verified against the code) surfaced
+and fixed, before any of it shipped beyond testnet demos: a session-token
+regression that 403'd the Freighter flow at `moves/prepare`; the browser
+Phantom rotating its localStorage secret before server confirmation
+(bricking risk on a failed submit — now staged + promoted only on
+success); `advanceAiTurns` batching persistence past on-chain mutations
+(now saved per landed move, including error paths); AI investigators in
+human-Phantom matches reading a frozen round-0 mirror (now a faithful
+chain-derived view); `/ai-turn` violating reveal-before-investigators
+ordering (now held while a reveal is due); lost-update races on the match
+store (revision CAS in both backends, 409 on conflict); a memoized-forever
+failed Redis connect (503 + retry); plus payload validation on the phantom
+routes, a shared adjacency rule for shadow/legality/phantom-options,
+lobby UI (open-to-lobby toggle + join list), route-handler tests, and —
+closing the loop on this section's own claims — the parity suite now
+includes the bb.js-VK-equals-CLI-VK byte check, a native `bb verify` of a
+browser proof, and byte-equality of public inputs against `zktable-graph
+witness`. The interactive human-Phantom browser match against testnet
+remains a pending manual acceptance run (nothing above claims otherwise).

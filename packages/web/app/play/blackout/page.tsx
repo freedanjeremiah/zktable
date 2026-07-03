@@ -22,6 +22,8 @@ import { computeShadow, extractPhantomTickets } from "@/lib/board/shadow";
 import type { Ticket } from "@/lib/board/ticket-meta";
 import { DEFAULT_REVEAL_ROUNDS } from "@/lib/board/ticket-meta";
 import {
+  confirmPhantomMove,
+  discardPendingPhantomMove,
   loadPhantomSecret,
   phantomLegalMoves,
   phantomRevealPayload,
@@ -35,6 +37,8 @@ import { cn } from "@/lib/utils";
 type Phase = "setup" | "creating" | "active" | "finished";
 
 type PendingPick = { node: number; tickets: Ticket[] };
+
+type OpenMatchSummary = { id: string; createdAt: number; refereeId: string; openSeats: string[]; status: string };
 
 async function readJson<T>(res: Response): Promise<T> {
   const json = (await res.json()) as T | { error: string };
@@ -57,6 +61,7 @@ export default function BlackoutBoardPage() {
   const [proofPhase, setProofPhase] = useState<ProofPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
+  const [openMatches, setOpenMatches] = useState<OpenMatchSummary[]>([]);
   const revealCountRef = useRef(0);
 
   const reset = useCallback(() => {
@@ -102,12 +107,54 @@ export default function BlackoutBoardPage() {
     };
   }, []);
 
+  // The open-match lobby (M8.4): visible while picking a game to start.
+  useEffect(() => {
+    if (phase !== "setup") return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/blackout/matches");
+        const json = await readJson<{ matches: OpenMatchSummary[] }>(res);
+        if (!cancelled) setOpenMatches(json.matches);
+      } catch {
+        // The lobby list is best-effort; creating a match works regardless.
+      }
+    };
+    void load();
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [phase]);
+
+  const joinOpenMatch = useCallback(async (id: string) => {
+    setError(null);
+    try {
+      const res = await fetch(`/api/blackout/matches/${id}/join`, { method: "POST" });
+      const json = await readJson<{ playerId: string; state: MatchDto }>(res);
+      setMatchId(id);
+      setExplorerUrl(json.state.explorerUrl);
+      setDto(json.state);
+      setHumanPlayerId(json.playerId);
+      setPhase(json.state.status === "finished" ? "finished" : "active");
+      window.history.replaceState(null, "", `/play/blackout?match=${id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
   // Light polling while someone else (AI or another browser) is on the
   // clock, so this view keeps up without a manual refresh.
   useEffect(() => {
     if (phase !== "active" || !matchId || busyLabel) return;
     if (dto?.currentPlayer && !dto.currentPlayer.isAi && dto.currentPlayer.id === humanPlayerId) return;
     const timer = setInterval(() => {
+      // Backgrounded tabs must not hammer the server (each poll is a chain
+      // read); the next visible tick catches up.
+      if (document.visibilityState !== "visible") return;
       void (async () => {
         try {
           const res = await fetch(`/api/blackout/matches/${matchId}`);
@@ -158,6 +205,7 @@ export default function BlackoutBoardPage() {
             model: options.model || undefined,
             walletAddress: walletAddress ?? undefined,
             phantomSeat: playPhantom ? "human" : undefined,
+            open: options.open || undefined,
           }),
         });
         const json = await readJson<{ matchId: string; explorerUrl: string; state: MatchDto }>(res);
@@ -231,16 +279,28 @@ export default function BlackoutBoardPage() {
           // Prove the hidden move IN THE BROWSER (M8.5): the position and
           // salts never leave this machine — only {c_new, ticket, proof}.
           const preRound = dto.round;
-          setBusyLabel("Proving your move in this browser (bb.js)…");
+          setBusyLabel("Proving your move in this browser — typically 10–30 s…");
           const payload = await provePhantomMove(matchId, { to: node, ticket });
           setBusyLabel("Submitting your proof on-chain…");
-          res = await fetch(`/api/blackout/matches/${matchId}/phantom-move`, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          let next = await readJson<MatchDto>(res);
-          if (DEFAULT_REVEAL_ROUNDS.includes(preRound)) {
+          let next: MatchDto;
+          try {
+            res = await fetch(`/api/blackout/matches/${matchId}/phantom-move`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            next = await readJson<MatchDto>(res);
+          } catch (err) {
+            // The move never landed: drop the staged (pos, salt) so the
+            // CURRENT salt (matching the on-chain commitment) stays
+            // authoritative for the retry.
+            discardPendingPhantomMove(matchId);
+            throw err;
+          }
+          // Landed on-chain — promote the staged secret.
+          confirmPhantomMove(matchId);
+          const revealRounds = next.revealRounds.length > 0 ? next.revealRounds : DEFAULT_REVEAL_ROUNDS;
+          if (revealRounds.includes(preRound)) {
             setBusyLabel("Reveal round — publishing your position…");
             const revealRes = await fetch(`/api/blackout/matches/${matchId}/phantom-reveal`, {
               method: "POST",
@@ -252,7 +312,16 @@ export default function BlackoutBoardPage() {
           setDto(next);
           setProofPhase(next.proofStatus?.ok === false ? "error" : "verified");
           setBusyLabel(null);
-          if (next.status === "finished") setPhase("finished");
+          if (next.status === "finished") {
+            setPhase("finished");
+            return;
+          }
+          // Same client-side safety net the other paths get: if the server
+          // stopped mid-AI-run, kick it (safe — the server holds AI turns
+          // while a reveal is still pending).
+          if (next.currentPlayer?.isAi) {
+            await runAiTurns(matchId);
+          }
           return;
         }
         if (dto.walletSeat && dto.walletSeat.player === player) {
@@ -376,8 +445,37 @@ export default function BlackoutBoardPage() {
       ) : null}
 
       {phase === "setup" ? (
-        <div className="mt-8 max-w-xl">
+        <div className="mt-8 flex max-w-xl flex-col gap-6">
           <SetupPanel onStart={handleStart} />
+          {openMatches.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Open matches</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {openMatches.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-mono text-xs text-fg">{m.id}</div>
+                      <div className="text-xs text-fg-subtle">
+                        seat{m.openSeats.length === 1 ? "" : "s"} {m.openSeats.join(", ")} · {m.status}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="accent"
+                      className="cursor-pointer select-none"
+                      onClick={() => void joinOpenMatch(m.id)}
+                    >
+                      Join
+                    </Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       ) : null}
 

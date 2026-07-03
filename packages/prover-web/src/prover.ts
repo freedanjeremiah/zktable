@@ -9,6 +9,9 @@
 // compiled circuit artifact, the VK, and the (public) graph data — in the
 // web app those are served as static assets.
 
+// PINNED to the CLI toolchain in packages/circuits/scripts/build_all.sh
+// (NOIR_VERSION / BB_VERSION) — these four version numbers must move
+// together or browser proofs stop verifying against CLI-built VKs.
 import { UltraHonkBackend } from "@aztec/bb.js";
 import { Noir } from "@noir-lang/noir_js";
 import type { CompiledCircuit } from "@noir-lang/noir_js";
@@ -97,11 +100,11 @@ export async function createWebProver(artifacts: WebProverArtifacts): Promise<We
     },
 
     async verifyLocally(p: WebBoardProof): Promise<boolean> {
-      const publicInputs: string[] = [];
-      for (let i = 0; i < p.publicInputs.length; i += 32) {
-        const word = [...p.publicInputs.slice(i, i + 32)].map((b) => b.toString(16).padStart(2, "0")).join("");
-        publicInputs.push(`0x${word}`);
-      }
+      // Rebuild the public-input words from the proof's own named fields so
+      // the blob layout stays defined in exactly one place (prove() above).
+      const publicInputs = [p.cOldHex, p.cNewHex, toBe32Hex(BigInt(p.ticket)), p.rootHex].map(
+        (word) => `0x${word}`,
+      );
       return backend.verifyProof({ proof: p.proof, publicInputs }, { keccak: true });
     },
   };

@@ -11,6 +11,8 @@ export interface SetupOptions {
   model: string;
   /** Which side the human plays. 'phantom' proves every move in YOUR browser (M8.5). */
   seat: "investigator" | "phantom";
+  /** List the match in the open lobby so another browser can claim the human seat (M8.4). */
+  open: boolean;
 }
 
 export interface SetupPanelProps {
@@ -30,6 +32,7 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
   const [investigators, setInvestigators] = useState(3);
   const [model, setModel] = useState("");
   const [seat, setSeat] = useState<"investigator" | "phantom">("investigator");
+  const [open, setOpen] = useState(false);
 
   return (
     <Card>
@@ -113,13 +116,26 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
           />
         </div>
 
+        {seat === "investigator" ? (
+          <label className="flex items-center gap-2 text-sm text-fg-muted">
+            <input
+              type="checkbox"
+              checked={open}
+              disabled={disabled}
+              onChange={(e) => setOpen(e.target.checked)}
+              className="h-4 w-4 accent-[var(--accent,#888)]"
+            />
+            Open to the lobby (leave your seat unclaimed so anyone can join)
+          </label>
+        ) : null}
+
         <div className="flex items-center justify-between gap-4 border-t border-border pt-5">
           <ProvablyHiddenTag label="Phantom start position" />
           <Button
             variant="primary"
             size="lg"
             disabled={disabled}
-            onClick={() => onStart({ investigators, model: model.trim(), seat })}
+            onClick={() => onStart({ investigators, model: model.trim(), seat, open: seat === "investigator" && open })}
           >
             Deploy a real match
           </Button>

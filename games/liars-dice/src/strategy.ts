@@ -49,7 +49,12 @@ export function pickSeeded<T>(items: readonly T[], seed: string): T {
 // --- helpers -----------------------------------------------------------
 
 function ownDice(view: PlayerView): number[] {
-  return (view.self.secret.dice as number[] | undefined) ?? []
+  // The own-id entry of the public mirror is authoritative: multi-round
+  // re-rolls (M8.2) live in `public.diceByPlayer` because `apply` is pure
+  // and cannot rewrite secrets. Reading only this player's own entry keeps
+  // the "never read other players' dice" principle intact.
+  const mirror = (view.public.diceByPlayer as Record<string, number[]> | undefined)?.[view.self.id]
+  return mirror ?? (view.self.secret.dice as number[] | undefined) ?? []
 }
 
 function countFace(dice: number[], face: number): number {

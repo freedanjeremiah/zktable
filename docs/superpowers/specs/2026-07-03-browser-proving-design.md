@@ -70,6 +70,11 @@ source of truth).
   isolates that in one function; the acceptance test pins the real behavior
   against the CLI verifier.
 
+> **Implementation amendment:** the VK is NOT shipped to the browser —
+> `UltraHonkBackend` derives it from the ACIR bytecode, and the parity
+> suite pins that derivation byte-equal to the CLI's `bb write_vk` output
+> (so `createWebProver` takes `{circuit, graph}` only).
+
 ### Artifact delivery
 
 - `move_along.json` (ACIR) and `vk` are copied at build time into

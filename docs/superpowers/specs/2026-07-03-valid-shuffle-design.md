@@ -35,8 +35,16 @@ deck position — `deal` stops accepting commitments from the caller entirely.
   inputs (no tree needed at this size). A Merkle-rooted variant is a
   documented follow-up for big decks.
 
-> **Implementation amendment:** the deck is **15 cards (3 copies × 5
-> characters, real Coup)**, not the 5 sketched below — a 5-card deck caps
+> **Implementation amendments:**
+> - Sort-key truncation is **64-bit** (`k as u64` in-circuit, `k mod 2^64`
+>   in `zktable-graph`), not the 128-bit sketch below — protocol-defined,
+>   see ADR 009 (tie probability ~2^-57 across 15 keys).
+> - The stored seed is the **left-fold** `hash2(hash2(0, n_0), n_1)` — the
+>   liars-dice referee's exact formula this spec says it mirrors (the
+>   `Poseidon2(nonce_0, nonce_1)` line below was internally inconsistent).
+> - `shuffle-witness` requires `--salts` (the runner generates them);
+>   tool-side salt generation was dropped as redundant.
+> - The deck is **15 cards (3 copies × 5 characters, real Coup)**, not the 5 sketched below — a 5-card deck caps
 > position-assigned hands at 2 players, which would have regressed the
 > referee's (and M8.2's) 2–4 player support. Positions 2p/2p+1 deal up to 4
 > players; the rest stay burned. Constraint counts stay trivial (105

@@ -8,24 +8,14 @@
 import type { Move } from "@zktable/core";
 import type { ChainGameState } from "@zktable/blackout";
 import { CITY_GRAPH } from "../board/city-graph";
-
-const TICKETS = [0, 1, 2] as const;
+import { movesFrom } from "../board/shadow";
 
 /** Legal `{ type: "move", to, ticket }` moves for an investigator seat, from chain state. */
 export function legalPublicMovesFromChain(state: ChainGameState, playerIdx: number): Move[] {
   const player = state.players[playerIdx];
   if (!player || player.public_node === null) return [];
-  const from = player.public_node;
   const resources = player.resources;
-
-  const moves: Move[] = [];
-  for (const ticket of TICKETS) {
-    if ((resources[ticket] ?? 0) === 0) continue;
-    for (const edge of CITY_GRAPH.edges) {
-      if (edge.ticket !== ticket) continue;
-      if (edge.from === from) moves.push({ type: "move", to: edge.to, ticket });
-      else if (CITY_GRAPH.bidirectional && edge.to === from) moves.push({ type: "move", to: edge.from, ticket });
-    }
-  }
-  return moves;
+  return movesFrom(CITY_GRAPH, player.public_node)
+    .filter(({ ticket }) => (resources[ticket] ?? 0) > 0)
+    .map(({ to, ticket }) => ({ type: "move", to, ticket }));
 }

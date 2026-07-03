@@ -53,7 +53,7 @@ export function extractPhantomTickets(
   return out;
 }
 
-function buildAdjacency(graph: GraphLike): Map<number, Array<{ to: number; ticket: Ticket }>> {
+export function buildAdjacency(graph: GraphLike): Map<number, Array<{ to: number; ticket: Ticket }>> {
   const adjacency = new Map<number, Array<{ to: number; ticket: Ticket }>>();
   const add = (from: number, to: number, ticket: Ticket) => {
     const list = adjacency.get(from);
@@ -65,6 +65,17 @@ function buildAdjacency(graph: GraphLike): Map<number, Array<{ to: number; ticke
     if (graph.bidirectional !== false) add(e.to, e.from, e.ticket);
   }
   return adjacency;
+}
+
+/**
+ * Every `(to, ticket)` move available from `node` — THE single adjacency
+ * rule (bidirectional defaults to TRUE, matching city.json and the shadow
+ * inference above). Server-side move legality and the browser Phantom's
+ * option list both build on this so the three views of the graph can never
+ * disagree.
+ */
+export function movesFrom(graph: GraphLike, node: number): Array<{ to: number; ticket: Ticket }> {
+  return buildAdjacency(graph).get(node) ?? [];
 }
 
 function expand(
