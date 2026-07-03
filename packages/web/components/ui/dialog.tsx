@@ -53,24 +53,24 @@ export function Dialog({
         if (e.target === ref.current) onOpenChange(false);
       }}
       className={cn(
-        "m-auto w-full max-w-md rounded-[var(--radius-lg)] border border-border-strong bg-bg-panel p-0 text-fg backdrop:bg-bg-overlay/80 open:animate-fade-up",
+        "m-auto w-full max-w-md rounded-[var(--radius-lg)] border-2 border-black bg-white p-0 text-fg shadow-[var(--shadow-brutal-lg)] backdrop:bg-black/40 open:animate-fade-up",
         className,
       )}
     >
-      <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+      <div className="flex items-start justify-between gap-4 border-b-2 border-black bg-accent p-5">
         <div>
-          <h2 className="font-display text-lg font-semibold text-fg">
+          <h2 className="font-display text-lg font-extrabold text-black">
             {title}
           </h2>
           {description ? (
-            <p className="mt-1 text-sm text-fg-muted">{description}</p>
+            <p className="mt-1 text-sm font-medium text-black/70">{description}</p>
           ) : null}
         </div>
         <button
           type="button"
           aria-label="Close"
           onClick={() => onOpenChange(false)}
-          className="rounded-[var(--radius-sm)] p-1 text-fg-subtle transition-colors hover:bg-bg-elevated hover:text-fg"
+          className="rounded-[var(--radius-sm)] border-2 border-black bg-white p-1 text-black transition-all hover:shadow-[var(--shadow-brutal-sm)] active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
         >
           <X className="h-4 w-4" />
         </button>

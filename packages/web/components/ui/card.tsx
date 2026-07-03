@@ -1,11 +1,13 @@
 import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
+// Neo-brutalist card, per the library's Card: white, 2px black border,
+// rounded-md, permanent hard offset shadow.
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-lg)] border border-border bg-bg-elevated",
+        "rounded-[var(--radius-lg)] border-2 border-black bg-white shadow-[var(--shadow-brutal)]",
         className,
       )}
       {...props}
@@ -29,7 +31,7 @@ export function CardTitle({
   return (
     <h3
       className={cn(
-        "font-display text-xl font-semibold tracking-tight text-fg",
+        "font-display text-xl font-extrabold tracking-tight text-fg",
         className,
       )}
       {...props}

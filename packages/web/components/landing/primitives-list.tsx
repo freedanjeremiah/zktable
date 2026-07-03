@@ -33,7 +33,7 @@ const PRIMITIVES = [
 
 export function PrimitivesList() {
   return (
-    <ol className="divide-y divide-border border-y border-border">
+    <ol className="divide-y-2 divide-black border-y-2 border-black">
       {PRIMITIVES.map((p) => (
         <li
           key={p.id}

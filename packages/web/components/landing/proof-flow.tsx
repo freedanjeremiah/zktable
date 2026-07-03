@@ -18,8 +18,8 @@ const ON_CHAIN_STEPS = [
 export function ProofFlow() {
   return (
     <div className="grid gap-8 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-6">
-      <div className="rounded-[var(--radius-lg)] border border-hidden/30 bg-hidden/[0.04] p-6">
-        <p className="font-mono text-xs uppercase tracking-[0.12em] text-hidden-strong">
+      <div className="rounded-[var(--radius-lg)] border-2 border-black bg-hidden/[0.04] p-6">
+        <p className="font-mono text-xs uppercase tracking-[0.12em] font-bold text-black">
           Off-chain — player or AI
         </p>
         <ol className="mt-4 space-y-3">
@@ -39,8 +39,8 @@ export function ProofFlow() {
         </span>
       </div>
 
-      <div className="rounded-[var(--radius-lg)] border border-accent/30 bg-accent/[0.04] p-6">
-        <p className="font-mono text-xs uppercase tracking-[0.12em] text-accent">
+      <div className="rounded-[var(--radius-lg)] border-2 border-black bg-accent/[0.04] p-6">
+        <p className="font-mono text-xs uppercase tracking-[0.12em] font-bold text-black">
           On-chain — Soroban referee
         </p>
         <ol className="mt-4 space-y-3">

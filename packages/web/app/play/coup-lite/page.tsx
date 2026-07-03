@@ -99,7 +99,7 @@ export default function CoupLitePage() {
       </div>
 
       {error ? (
-        <p className="mt-4 rounded-[var(--radius-md)] border border-danger/40 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>
+        <p className="mt-4 rounded-[var(--radius-md)] border-2 border-black bg-[#FF9F9F] px-4 py-2.5 text-sm font-semibold text-black">{error}</p>
       ) : null}
 
       {phase === "setup" ? (
@@ -143,14 +143,14 @@ export default function CoupLitePage() {
                   </div>
                   <div className="flex gap-2">
                     {ai.dead.map((dead, i) => (
-                      <span key={i} className="flex h-16 w-11 items-center justify-center rounded-[var(--radius-sm)] border border-border-strong bg-bg-panel text-xs text-fg-subtle">
+                      <span key={i} className="flex h-16 w-11 items-center justify-center rounded-[var(--radius-sm)] border-2 border-black bg-bg-panel text-xs text-fg-subtle">
                         {dead ? "💀" : "🂠"}
                       </span>
                     ))}
                   </div>
                 </div>
 
-                <div className="rounded-[var(--radius-md)] border border-border bg-bg-panel px-4 py-3 text-center">
+                <div className="rounded-[var(--radius-md)] border-2 border-black bg-bg-panel px-4 py-3 text-center">
                   {dto.lastClaim ? (
                     <span className="font-mono text-fg">
                       {dto.players[dto.lastClaim.player]?.isHuman ? "You" : "AI"} claim{dto.players[dto.lastClaim.player]?.isHuman ? "" : "s"}: {name(dto.lastClaim.character)}
@@ -162,10 +162,10 @@ export default function CoupLitePage() {
 
                 {/* Human */}
                 <div>
-                  <div className="mb-2 text-sm font-semibold text-accent">Your hand · {human.influence} influence</div>
+                  <div className="mb-2 text-sm font-semibold font-bold text-black">Your hand · {human.influence} influence</div>
                   <div className="flex gap-2">
                     {(human.hand ?? []).map((c, i) => (
-                      <span key={i} className={cn("flex h-16 w-24 items-center justify-center rounded-[var(--radius-sm)] border text-sm", human.dead[i] ? "border-border bg-bg-panel text-fg-subtle line-through" : "border-accent/50 bg-accent/10 text-accent")}>
+                      <span key={i} className={cn("flex h-16 w-24 items-center justify-center rounded-[var(--radius-sm)] border-2 text-sm", human.dead[i] ? "border-black bg-bg-panel text-fg-subtle line-through" : "border-black bg-accent-soft text-black")}>
                         {name(c)}
                       </span>
                     ))}
@@ -178,7 +178,7 @@ export default function CoupLitePage() {
               <Card>
                 <CardContent className="flex flex-col items-center gap-3 py-8">
                   <span className="text-2xl font-bold text-fg">{dto.outcome.index === human.index ? "You win 🎉" : "AI wins"}</span>
-                  <a href={dto.explorerUrl} target="_blank" rel="noreferrer" className="font-mono text-xs text-accent underline">view referee on stellar.expert →</a>
+                  <a href={dto.explorerUrl} target="_blank" rel="noreferrer" className="font-mono text-xs font-bold text-black underline decoration-accent decoration-[3px] underline-offset-2">view referee on stellar.expert →</a>
                   <Button variant="outline" size="md" onClick={() => { window.location.href = "/play/coup-lite"; }}>New match</Button>
                 </CardContent>
               </Card>
@@ -220,7 +220,7 @@ export default function CoupLitePage() {
                     {e.type === "deal" && <span>provably-fair deal (valid_shuffle verified)</span>}
                     {e.type === "claim" && <span className="text-fg">{e.player} claims {name(e.character)}</span>}
                     {e.type === "challenge" && (
-                      <span className="text-accent">
+                      <span className="font-bold text-black">
                         {e.challenger} challenged {e.target} — {e.claimWasTrue ? "TRUE (ZK-proven)" : "BLUFF"}; {e.loser} lost influence
                       </span>
                     )}

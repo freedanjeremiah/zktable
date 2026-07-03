@@ -59,8 +59,8 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
                 className={
                   "h-9 flex-1 rounded-[var(--radius-sm)] border px-3 text-sm capitalize transition-colors disabled:pointer-events-none disabled:opacity-40 " +
                   (seat === option
-                    ? "border-accent bg-accent/10 text-accent"
-                    : "border-border-strong text-fg-muted hover:border-accent hover:text-accent")
+                    ? "border-accent bg-accent-soft text-black"
+                    : "border-black bg-white text-fg-muted hover:bg-accent hover:text-black")
                 }
               >
                 {option === "phantom" ? "Phantom (prove in-browser)" : "Investigator"}
@@ -79,7 +79,7 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
               aria-label="Fewer investigators"
               disabled={disabled || investigators <= MIN_INVESTIGATORS}
               onClick={() => setInvestigators((n) => Math.max(MIN_INVESTIGATORS, n - 1))}
-              className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border-strong text-fg-muted transition-colors hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-40"
+              className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border-2 border-black text-fg-muted transition-colors hover:bg-accent hover:text-black disabled:pointer-events-none disabled:opacity-40"
             >
               <Minus className="h-3.5 w-3.5" />
             </button>
@@ -89,7 +89,7 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
               aria-label="More investigators"
               disabled={disabled || investigators >= MAX_INVESTIGATORS}
               onClick={() => setInvestigators((n) => Math.min(MAX_INVESTIGATORS, n + 1))}
-              className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-border-strong text-fg-muted transition-colors hover:border-accent hover:text-accent disabled:pointer-events-none disabled:opacity-40"
+              className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border-2 border-black text-fg-muted transition-colors hover:bg-accent hover:text-black disabled:pointer-events-none disabled:opacity-40"
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -112,7 +112,7 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
             disabled={disabled}
             onChange={(e) => setModel(e.target.value)}
             placeholder="server default"
-            className="mt-2 h-9 w-full rounded-[var(--radius-sm)] border border-border-strong bg-bg-elevated px-3 font-mono text-sm text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none"
+            className="mt-2 h-9 w-full rounded-[var(--radius-sm)] border-2 border-black bg-bg-elevated px-3 font-mono text-sm text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none"
           />
         </div>
 
@@ -129,7 +129,7 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
           </label>
         ) : null}
 
-        <div className="flex items-center justify-between gap-4 border-t border-border pt-5">
+        <div className="flex items-center justify-between gap-4 border-t-2 border-black pt-5">
           <ProvablyHiddenTag label="Phantom start position" />
           <Button
             variant="primary"

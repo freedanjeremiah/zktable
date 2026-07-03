@@ -46,7 +46,7 @@ export default function ArcadePage() {
       </div>
 
       {/* Featured: Blackout */}
-      <div className="mt-14 overflow-hidden rounded-[var(--radius-lg)] border border-border bg-bg-elevated">
+      <div className="mt-14 overflow-hidden rounded-[var(--radius-lg)] border-2 border-black bg-bg-elevated shadow-[var(--shadow-brutal-lg)]">
         <div className="grid gap-0 lg:grid-cols-[1.1fr_1fr]">
           <div className="flex flex-col justify-between p-8 sm:p-10">
             <div>
@@ -63,7 +63,7 @@ export default function ArcadePage() {
                 team of Investigators hunts them down. Hidden movement, not
                 a hidden hand, proven legal on every single move.
               </p>
-              <dl className="mt-6 grid grid-cols-3 gap-4 border-t border-border pt-6 text-sm">
+              <dl className="mt-6 grid grid-cols-3 gap-4 border-t-2 border-black pt-6 text-sm">
                 <div>
                   <dt className="text-fg-subtle">Players</dt>
                   <dd className="mt-1 font-mono text-fg">1 vs up to 5</dd>
@@ -88,7 +88,7 @@ export default function ArcadePage() {
               </Link>
             </div>
           </div>
-          <div className="relative min-h-[280px] border-t border-border bg-bg-panel p-6 lg:border-l lg:border-t-0">
+          <div className="relative min-h-[280px] border-t-2 border-black bg-bg-panel p-6 lg:border-l lg:border-t-0">
             <CityMapPreview />
           </div>
         </div>
@@ -99,7 +99,7 @@ export default function ArcadePage() {
         {PLAYABLE_GAMES.map((game) => (
           <div
             key={game.slug}
-            className="flex flex-col justify-between rounded-[var(--radius-lg)] border border-border bg-bg-elevated p-8"
+            className="flex flex-col justify-between rounded-[var(--radius-lg)] border-2 border-black bg-bg-elevated p-8 shadow-[var(--shadow-brutal)] transition-shadow hover:shadow-[var(--shadow-brutal-lg)]"
           >
             <div>
               <div className="flex items-center justify-between">

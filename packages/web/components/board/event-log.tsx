@@ -14,7 +14,7 @@ function describe(event: MatchEvent): { icon: typeof ShieldCheck; text: string; 
       return {
         icon: ShieldCheck,
         text: `Round ${event.round} — Phantom moved by ${ticketLabel(event.ticket)} (proof verified)`,
-        tone: "text-accent",
+        tone: "font-bold text-black",
       };
     case "public_move":
       return {

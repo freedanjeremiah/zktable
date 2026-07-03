@@ -64,7 +64,7 @@ export function WalletButton() {
           description="Freighter, Stellar testnet."
         >
           <div className="space-y-4">
-            <div className="flex items-center justify-between rounded-[var(--radius-md)] border border-border bg-bg-elevated px-3 py-2">
+            <div className="flex items-center justify-between rounded-[var(--radius-md)] border-2 border-black bg-bg-elevated px-3 py-2">
               <span className="truncate font-mono text-sm text-fg">
                 {wallet.address}
               </span>

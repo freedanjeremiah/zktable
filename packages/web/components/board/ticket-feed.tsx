@@ -48,8 +48,8 @@ export function TicketFeed({ ticketFeed, phantomTickets, cycleLen, revealRounds,
             className={cn(
               "inline-flex items-center gap-1 rounded-[var(--radius-sm)] border px-1.5 py-0.5 font-mono text-[0.6875rem] uppercase tracking-[0.06em]",
               isPhantom
-                ? "border-accent/50 bg-accent/10 text-accent"
-                : "border-border text-fg-subtle",
+                ? "border-black bg-accent-soft text-black"
+                : "border-black text-fg-subtle",
             )}
             title={
               isPhantom

@@ -1,56 +1,72 @@
 @import "tailwindcss";
 
 /*
-  zkTable design tokens — "noir case-file" arcade.
+  zkTable design tokens — NEO-BRUTALISM.
 
-  Scene: a detective reviewing a case file under a desk lamp at 1am, the city
-  outside dark. The file itself is precise and typed, not romantic. Two
-  accents carry all meaning:
-    - amber/brass ("verified")  → proofs that closed, moves that landed,
-      primary actions. The stamp ink.
-    - cold slate ("hidden")     → anything zk.hidden — secret positions,
-      proving-in-progress, fog.
-  Every neutral is tinted warm (toward the same hue as the brass) so the
-  darkness reads as film-grain charcoal, never pure #000.
+  Faithful to marieooq/neo-brutalism-ui-library: flat vibrant fills from its
+  exact palette, 2px solid black borders on everything, hard offset shadows
+  (no blur, pure rgba(0,0,0,1)), bold high-contrast type, press-style
+  interactions (element lifts toward the light, shadow grows; active snaps
+  flat). Semantics carried over from the old theme:
+    - accent  ("verified") → the library's signature YELLOW  #FFE500
+    - hidden  (zk.hidden)  → the library's VIOLET            #A8A6FF
+    - success              → LIME                            #7df752
+    - danger               → RED                             #f76363
+  Cards are white on a cream page, exactly like the library's Card.
 */
 
 @theme {
   --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
-  --font-body: var(--font-source-serif), ui-serif, Georgia, serif;
+  /* Brutalism is bold sans throughout — the serif body is retired. */
+  --font-body: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, "SF Mono", monospace;
 
-  /* surfaces — warm charcoal, deepening toward panels */
-  --color-bg: oklch(16% 0.014 55);
-  --color-bg-elevated: oklch(20% 0.016 55);
-  --color-bg-panel: oklch(23.5% 0.018 55);
-  --color-bg-overlay: oklch(12% 0.014 55);
+  /* surfaces — cream page, white cards (library Card is bg-white) */
+  --color-bg: #fdf6e9;
+  --color-bg-elevated: #ffffff;
+  --color-bg-panel: #fff9ee;
+  --color-bg-overlay: #ffffff;
 
-  /* borders */
-  --color-border: oklch(34% 0.02 55);
-  --color-border-strong: oklch(44% 0.03 55);
+  /* borders — always black; "strong" kept as an alias so existing
+     border-border-strong classes stay valid */
+  --color-border: #000000;
+  --color-border-strong: #000000;
 
-  /* text */
-  --color-fg: oklch(94% 0.008 75);
-  --color-fg-muted: oklch(70% 0.015 65);
-  --color-fg-subtle: oklch(52% 0.014 60);
+  /* text — black on light */
+  --color-fg: #000000;
+  --color-fg-muted: #3d3d3d;
+  --color-fg-subtle: #6b6b6b;
 
-  /* accent — "verified on-chain" brass stamp ink */
-  --color-accent: oklch(76% 0.14 68);
-  --color-accent-strong: oklch(68% 0.16 55);
-  --color-accent-fg: oklch(16% 0.02 55);
+  /* accent — the library's yellow-400 (#FFE500), hover 300, active 200 */
+  --color-accent: #ffe500;
+  --color-accent-strong: #fff066;
+  --color-accent-soft: #fff59f;
+  --color-accent-fg: #000000;
 
-  /* hidden — cold slate for zk.hidden / proving / fog */
-  --color-hidden: oklch(58% 0.055 250);
-  --color-hidden-strong: oklch(68% 0.075 248);
-  --color-hidden-fg: oklch(14% 0.02 250);
+  /* hidden — the library's violet family for zk.hidden / proving / fog */
+  --color-hidden: #a8a6ff;
+  --color-hidden-strong: #918efa;
+  --color-hidden-fg: #000000;
+
+  /* extra library colors, available as bg-cyan-brutal etc. */
+  --color-cyan-brutal: #a6faff;
+  --color-pink-brutal: #ffa6f6;
+  --color-lime-brutal: #b8ff9f;
+  --color-orange-brutal: #ffc29f;
 
   /* status */
-  --color-success: oklch(68% 0.13 145);
-  --color-danger: oklch(62% 0.19 25);
+  --color-success: #7df752;
+  --color-danger: #f76363;
 
-  --radius-sm: 0.25rem;
+  /* the library's rounded="md" */
+  --radius-sm: 0.375rem;
   --radius-md: 0.375rem;
-  --radius-lg: 0.625rem;
+  --radius-lg: 0.375rem;
+
+  /* hard offset shadows — the neo-brutalist signature (no blur, pure black) */
+  --shadow-brutal-sm: 2px 2px 0px rgba(0, 0, 0, 1);
+  --shadow-brutal: 4px 4px 0px rgba(0, 0, 0, 1);
+  --shadow-brutal-lg: 8px 8px 0px rgba(0, 0, 0, 1);
 
   --animate-pulse-slow: pulse-slow 3.2s cubic-bezier(0.16, 1, 0.3, 1) infinite;
   --animate-fade-up: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -82,7 +98,7 @@
   }
 
   html {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
@@ -99,6 +115,7 @@
   h4,
   .font-display {
     font-family: var(--font-display);
+    font-weight: 800;
   }
 
   ::selection {
@@ -107,7 +124,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-accent);
+    outline: 2px solid #000000;
     outline-offset: 2px;
     border-radius: var(--radius-sm);
   }
@@ -129,11 +146,20 @@
     text-wrap: balance;
   }
 
+  /* Subtle dot grid, now light-on-cream. */
   .bg-grain {
-    background-image: radial-gradient(
-      oklch(30% 0.02 55 / 0.55) 0.6px,
-      transparent 0.6px
-    );
+    background-image: radial-gradient(rgba(0, 0, 0, 0.14) 0.6px, transparent 0.6px);
     background-size: 3px 3px;
+  }
+
+  /* The library's hard-shadow vocabulary as utilities. */
+  .shadow-brutal-sm {
+    box-shadow: var(--shadow-brutal-sm);
+  }
+  .shadow-brutal {
+    box-shadow: var(--shadow-brutal);
+  }
+  .shadow-brutal-lg {
+    box-shadow: var(--shadow-brutal-lg);
   }
 }

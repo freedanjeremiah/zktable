@@ -107,7 +107,7 @@ export default function BlackoutDebugPage() {
         Phantom move. The polished board lives at <code>/play/blackout</code> (M4c).
       </p>
 
-      <div className="mt-6 flex flex-wrap items-end gap-4 rounded-[var(--radius-lg)] border border-border bg-bg-panel p-4">
+      <div className="mt-6 flex flex-wrap items-end gap-4 rounded-[var(--radius-lg)] border-2 border-black bg-bg-panel p-4">
         <label className="flex flex-col gap-1 text-xs text-fg-muted">
           investigators
           <input
@@ -116,7 +116,7 @@ export default function BlackoutDebugPage() {
             max={5}
             value={investigators}
             onChange={(e) => setInvestigators(Number(e.target.value))}
-            className="w-20 rounded border border-border-strong bg-bg px-2 py-1 text-sm text-fg"
+            className="w-20 rounded border-2 border-black bg-bg px-2 py-1 text-sm text-fg"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-fg-muted">
@@ -127,7 +127,7 @@ export default function BlackoutDebugPage() {
             max={investigators}
             value={aiInvestigators}
             onChange={(e) => setAiInvestigators(Number(e.target.value))}
-            className="w-20 rounded border border-border-strong bg-bg px-2 py-1 text-sm text-fg"
+            className="w-20 rounded border-2 border-black bg-bg px-2 py-1 text-sm text-fg"
           />
         </label>
         <Button onClick={createMatch} disabled={busy !== null}>
@@ -153,7 +153,7 @@ export default function BlackoutDebugPage() {
               href={state.explorerUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-accent underline underline-offset-2"
+              className="font-bold text-black underline decoration-accent decoration-[3px] underline-offset-2 underline-offset-2"
             >
               referee on stellar.expert
             </a>
@@ -162,13 +162,13 @@ export default function BlackoutDebugPage() {
       )}
 
       {error && (
-        <div className="mt-4 rounded-[var(--radius-sm)] border border-hidden/40 bg-hidden/10 p-3 text-sm text-hidden-strong">
+        <div className="mt-4 rounded-[var(--radius-sm)] border-2 border-black bg-hidden/60 p-3 text-sm font-bold text-black">
           {error}
         </div>
       )}
 
       {isHumanTurn && state?.currentPlayer && (
-        <div className="mt-6 rounded-[var(--radius-lg)] border border-accent/40 bg-accent/5 p-4">
+        <div className="mt-6 rounded-[var(--radius-lg)] border-2 border-black bg-accent-soft p-4">
           <p className="text-sm text-fg">
             Your turn — <span className="font-mono">{state.currentPlayer.id}</span> (player{" "}
             {state.currentPlayer.index})
@@ -187,7 +187,7 @@ export default function BlackoutDebugPage() {
               <input
                 value={moveNode}
                 onChange={(e) => setMoveNode(e.target.value)}
-                className="w-24 rounded border border-border-strong bg-bg px-2 py-1 text-sm text-fg"
+                className="w-24 rounded border-2 border-black bg-bg px-2 py-1 text-sm text-fg"
               />
             </label>
             <label className="flex flex-col gap-1 text-xs text-fg-muted">
@@ -195,7 +195,7 @@ export default function BlackoutDebugPage() {
               <input
                 value={moveTicket}
                 onChange={(e) => setMoveTicket(e.target.value)}
-                className="w-24 rounded border border-border-strong bg-bg px-2 py-1 text-sm text-fg"
+                className="w-24 rounded border-2 border-black bg-bg px-2 py-1 text-sm text-fg"
               />
             </label>
             <Button onClick={submitMove} disabled={busy !== null}>
@@ -206,7 +206,7 @@ export default function BlackoutDebugPage() {
       )}
 
       {state && (
-        <pre className="mt-6 max-h-[32rem] overflow-auto rounded-[var(--radius-lg)] border border-border bg-bg-panel p-4 text-xs text-fg-muted">
+        <pre className="mt-6 max-h-[32rem] overflow-auto rounded-[var(--radius-lg)] border-2 border-black bg-bg-panel p-4 text-xs text-fg-muted">
           {JSON.stringify(state, null, 2)}
         </pre>
       )}

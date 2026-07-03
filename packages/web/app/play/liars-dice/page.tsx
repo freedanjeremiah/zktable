@@ -132,7 +132,7 @@ export default function LiarsDicePage() {
       </div>
 
       {error ? (
-        <p className="mt-4 rounded-[var(--radius-md)] border border-danger/40 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</p>
+        <p className="mt-4 rounded-[var(--radius-md)] border-2 border-black bg-[#FF9F9F] px-4 py-2.5 text-sm font-semibold text-black">{error}</p>
       ) : null}
 
       {phase === "setup" ? (
@@ -183,7 +183,7 @@ export default function LiarsDicePage() {
                   {ai.dice ? null : <p className="mt-1 text-xs text-fg-subtle">hidden until a challenge</p>}
                 </div>
 
-                <div className="rounded-[var(--radius-md)] border border-border bg-bg-panel px-4 py-3 text-center">
+                <div className="rounded-[var(--radius-md)] border-2 border-black bg-bg-panel px-4 py-3 text-center">
                   {cur ? (
                     <span className="font-mono text-lg text-fg">
                       Standing bid: {cur.quantity} × {PIPS[cur.face]} <span className="text-fg-subtle">(face {cur.face})</span>
@@ -195,10 +195,10 @@ export default function LiarsDicePage() {
 
                 {/* Your dice — always visible */}
                 <div>
-                  <div className="mb-2 text-sm font-semibold text-accent">Your dice</div>
+                  <div className="mb-2 text-sm font-semibold font-bold text-black">Your dice</div>
                   <div className="flex gap-2">
                     {(human.dice ?? []).map((d, i) => (
-                      <span key={i} className="text-4xl leading-none text-accent">{PIPS[d]}</span>
+                      <span key={i} className="text-4xl leading-none font-bold text-black">{PIPS[d]}</span>
                     ))}
                   </div>
                 </div>
@@ -211,7 +211,7 @@ export default function LiarsDicePage() {
                   <span className="text-2xl font-bold text-fg">
                     {dto.outcome.index === human.index ? "You win 🎉" : "AI wins"}
                   </span>
-                  <a href={dto.explorerUrl} target="_blank" rel="noreferrer" className="font-mono text-xs text-accent underline">
+                  <a href={dto.explorerUrl} target="_blank" rel="noreferrer" className="font-mono text-xs font-bold text-black underline decoration-accent decoration-[3px] underline-offset-2">
                     view referee on stellar.expert →
                   </a>
                   <Button variant="outline" size="md" onClick={() => { window.location.href = "/play/liars-dice"; }}>New match</Button>
@@ -233,7 +233,7 @@ export default function LiarsDicePage() {
                         max={dto.totalDice}
                         value={bidQty}
                         onChange={(e) => setBidQty(Math.max(1, Number(e.target.value)))}
-                        className="h-9 w-20 rounded-[var(--radius-sm)] border border-border-strong bg-bg-elevated px-3 font-mono text-sm text-fg"
+                        className="h-9 w-20 rounded-[var(--radius-sm)] border-2 border-black bg-bg-elevated px-3 font-mono text-sm text-fg"
                       />
                     </label>
                     <label className="flex flex-col gap-1 text-xs text-fg-subtle">
@@ -241,7 +241,7 @@ export default function LiarsDicePage() {
                       <select
                         value={bidFace}
                         onChange={(e) => setBidFace(Number(e.target.value))}
-                        className="h-9 w-24 rounded-[var(--radius-sm)] border border-border-strong bg-bg-elevated px-2 font-mono text-sm text-fg"
+                        className="h-9 w-24 rounded-[var(--radius-sm)] border-2 border-black bg-bg-elevated px-2 font-mono text-sm text-fg"
                       >
                         {Array.from({ length: dto.sides }, (_, i) => i + 1).map((f) => (
                           <option key={f} value={f}>{PIPS[f]} {f}</option>
@@ -270,7 +270,7 @@ export default function LiarsDicePage() {
                   <li key={i} className="text-fg-muted">
                     {e.type === "roll" && <span>{e.player} rolled (ZK-proven fair)</span>}
                     {e.type === "bid" && <span className="text-fg">{e.player} bid {e.quantity} × face {e.face}</span>}
-                    {e.type === "challenge" && <span className="text-accent">{e.player} challenged!</span>}
+                    {e.type === "challenge" && <span className="font-bold text-black">{e.player} challenged!</span>}
                     {e.type === "reveal" && <span>{e.player} revealed [{e.dice.join(", ")}]</span>}
                     {e.type === "error" && <span className="text-danger">{e.message}</span>}
                   </li>

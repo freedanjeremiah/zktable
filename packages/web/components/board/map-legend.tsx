@@ -18,7 +18,7 @@ export function MapLegend() {
         </span>
       ))}
       <span className="inline-flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-hidden/40" aria-hidden />
+        <span className="h-2.5 w-2.5 rounded-full bg-hidden" aria-hidden />
         Possible Phantom location
       </span>
     </div>

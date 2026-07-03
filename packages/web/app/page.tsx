@@ -13,7 +13,7 @@ export default function LandingPage() {
   return (
     <>
       {/* Hero */}
-      <section className="relative overflow-hidden border-b border-border bg-grain">
+      <section className="relative overflow-hidden border-b-2 border-black bg-grain">
         <div
           className="pointer-events-none absolute inset-0"
           style={{
@@ -77,7 +77,7 @@ export default function LandingPage() {
       </section>
 
       {/* Prove off-chain / verify on-chain */}
-      <section className="border-y border-border bg-bg-elevated">
+      <section className="border-y-2 border-black bg-bg-elevated">
         <div className="mx-auto max-w-6xl px-6 py-24 sm:py-28">
           <div className="max-w-2xl">
             <h2 className="font-display text-3xl font-bold tracking-tight text-fg sm:text-4xl">
@@ -110,7 +110,7 @@ export default function LandingPage() {
               taxi, bus, and rail tickets. A team of Investigators hunts
               them down. The Phantom&rsquo;s ticket type is announced every
               turn, that&rsquo;s the clue, but their destination is a{" "}
-              <code className="rounded-[var(--radius-sm)] bg-bg-panel px-1.5 py-0.5 font-mono text-[0.85em] text-hidden-strong">
+              <code className="rounded-[var(--radius-sm)] bg-bg-panel px-1.5 py-0.5 font-mono text-[0.85em] font-bold text-black">
                 zk.hidden.node()
               </code>
               , proven legal at every move and surfaced only on rounds 3, 8,
@@ -136,19 +136,19 @@ export default function LandingPage() {
               </Link>
             </div>
           </div>
-          <div className="relative aspect-square rounded-[var(--radius-lg)] border border-border bg-bg-panel p-4">
+          <div className="relative aspect-square rounded-[var(--radius-lg)] border-2 border-black bg-bg-panel p-4">
             <CityMapPreview />
           </div>
         </div>
       </section>
 
       {/* Evidence */}
-      <section id="evidence" className="border-t border-border bg-bg-elevated">
+      <section id="evidence" className="border-t-2 border-black bg-bg-elevated">
         <div className="mx-auto max-w-6xl px-6 py-24 sm:py-28">
           <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
             <div className="max-w-xl">
               <h2 className="flex items-center gap-3 font-display text-3xl font-bold tracking-tight text-fg sm:text-4xl">
-                <ShieldCheck className="h-8 w-8 text-accent" aria-hidden />
+                <ShieldCheck className="h-8 w-8 font-bold text-black" aria-hidden />
                 This isn&rsquo;t a mockup.
               </h2>
               <p className="mt-4 text-[0.95rem] leading-relaxed text-fg-muted">
@@ -162,15 +162,15 @@ export default function LandingPage() {
               href={REFEREE_CONTRACT_EXPLORER_URL}
               target="_blank"
               rel="noreferrer"
-              className="group flex shrink-0 flex-col gap-2 rounded-[var(--radius-lg)] border border-border-strong bg-bg-panel px-6 py-5 transition-colors hover:border-accent"
+              className="group flex shrink-0 flex-col gap-2 rounded-[var(--radius-lg)] border-2 border-black bg-bg-panel px-6 py-5 transition-colors hover:bg-accent-soft"
             >
               <span className="font-mono text-xs uppercase tracking-[0.1em] text-fg-subtle">
                 referee contract · testnet
               </span>
-              <span className="break-all font-mono text-sm text-fg group-hover:text-accent">
+              <span className="break-all font-mono text-sm text-fg group-hover:text-black">
                 {REFEREE_CONTRACT_ID}
               </span>
-              <span className="inline-flex items-center gap-1.5 text-xs text-accent">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-black">
                 view on stellar.expert
                 <ArrowRight className="h-3 w-3" />
               </span>

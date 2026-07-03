@@ -18,7 +18,7 @@ export function VerifiedStamp({
   return (
     <span
       className={cn(
-        "inline-flex -rotate-2 items-center gap-1.5 rounded-[var(--radius-sm)] border-2 border-accent/70 px-2.5 py-1 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-accent",
+        "inline-flex -rotate-2 items-center gap-1.5 rounded-[var(--radius-sm)] border-2 border-black px-2.5 py-1 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.12em] font-bold text-black",
         className,
       )}
     >
@@ -38,7 +38,7 @@ export function ProvablyHiddenTag({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-hidden/50 bg-hidden/10 px-2.5 py-1 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-hidden-strong",
+        "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border-2 border-black bg-hidden/60 px-2.5 py-1 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.12em] font-bold text-black",
         className,
       )}
     >

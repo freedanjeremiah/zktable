@@ -25,13 +25,13 @@ export function ProofStatusCard({ phase, proofStatus, explorerUrl, className }: 
     return (
       <div
         className={cn(
-          "flex items-center gap-3 rounded-[var(--radius-md)] border border-hidden/40 bg-hidden/10 px-4 py-3",
+          "flex items-center gap-3 rounded-[var(--radius-md)] border-2 border-black bg-hidden/60 px-4 py-3",
           className,
         )}
       >
-        <Loader2 className="h-4 w-4 shrink-0 animate-spin text-hidden-strong" />
+        <Loader2 className="h-4 w-4 shrink-0 animate-spin font-bold text-black" />
         <div>
-          <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.1em] text-hidden-strong">
+          <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.1em] font-bold text-black">
             Phantom is moving in the dark
           </p>
           <p className="mt-0.5 text-xs text-fg-muted">
@@ -47,7 +47,7 @@ export function ProofStatusCard({ phase, proofStatus, explorerUrl, className }: 
     return (
       <div
         className={cn(
-          "flex items-start gap-3 rounded-[var(--radius-md)] border border-accent/40 bg-accent/10 px-4 py-3",
+          "flex items-start gap-3 rounded-[var(--radius-md)] border-2 border-black bg-accent-soft px-4 py-3",
           className,
         )}
       >
@@ -67,7 +67,7 @@ export function ProofStatusCard({ phase, proofStatus, explorerUrl, className }: 
             href={explorerUrl}
             target="_blank"
             rel="noreferrer"
-            className="mt-1.5 inline-flex items-center gap-1 text-xs text-accent hover:underline"
+            className="mt-1.5 inline-flex items-center gap-1 text-xs font-bold text-black underline decoration-accent decoration-[3px] underline-offset-2 hover:decoration-black"
           >
             Verify the referee on stellar.expert
             <ExternalLink className="h-3 w-3" />
@@ -81,7 +81,7 @@ export function ProofStatusCard({ phase, proofStatus, explorerUrl, className }: 
     return (
       <div
         className={cn(
-          "flex items-start gap-3 rounded-[var(--radius-md)] border border-danger/40 bg-danger/10 px-4 py-3",
+          "flex items-start gap-3 rounded-[var(--radius-md)] border-2 border-black bg-[#FF9F9F] px-4 py-3",
           className,
         )}
       >
@@ -97,7 +97,7 @@ export function ProofStatusCard({ phase, proofStatus, explorerUrl, className }: 
   }
 
   return (
-    <div className={cn("flex items-center gap-3 rounded-[var(--radius-md)] border border-border px-4 py-3", className)}>
+    <div className={cn("flex items-center gap-3 rounded-[var(--radius-md)] border-2 border-black px-4 py-3", className)}>
       <ProvablyHiddenTag label="Phantom position" />
       <p className="text-xs text-fg-subtle">Secret until the next reveal round.</p>
     </div>

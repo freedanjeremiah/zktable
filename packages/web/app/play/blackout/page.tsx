@@ -439,7 +439,7 @@ export default function BlackoutBoardPage() {
       </div>
 
       {error ? (
-        <p className="mt-4 rounded-[var(--radius-md)] border border-danger/40 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+        <p className="mt-4 rounded-[var(--radius-md)] border-2 border-black bg-[#FF9F9F] px-4 py-2.5 text-sm font-semibold text-black">
           {error}
         </p>
       ) : null}
@@ -456,7 +456,7 @@ export default function BlackoutBoardPage() {
                 {openMatches.map((m) => (
                   <div
                     key={m.id}
-                    className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2"
+                    className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border-2 border-black px-3 py-2"
                   >
                     <div className="min-w-0">
                       <div className="truncate font-mono text-xs text-fg">{m.id}</div>
@@ -489,7 +489,7 @@ export default function BlackoutBoardPage() {
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
           <div className="flex flex-col gap-4">
             <Card className="overflow-hidden">
-              <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-3">
+              <div className="flex items-center justify-between gap-4 border-b-2 border-black px-5 py-3">
                 <Hud round={dto.round} humanPlayer={humanPlayer} turnLabel={turnLabel} />
               </div>
               <div className={cn("relative aspect-square bg-bg-panel p-4", !isHumanTurn && "cursor-default")}>
@@ -503,7 +503,7 @@ export default function BlackoutBoardPage() {
                   disabled={!isHumanTurn}
                 />
               </div>
-              <div className="flex flex-col gap-3 border-t border-border px-5 py-4">
+              <div className="flex flex-col gap-3 border-t-2 border-black px-5 py-4">
                 <MapLegend />
                 {busyLabel || proofPhase !== "idle" ? (
                   <ProofStatusCard phase={busyLabel ? "proving" : proofPhase} proofStatus={dto.proofStatus} explorerUrl={explorerUrl} />

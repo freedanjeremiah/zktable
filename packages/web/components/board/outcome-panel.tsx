@@ -15,7 +15,7 @@ export function OutcomePanel({ outcome, explorerUrl, onNewMatch }: OutcomePanelP
   const investigatorsWon = outcome.role === "investigator";
 
   return (
-    <Card className="border-accent/40">
+    <Card className="border-black">
       <CardHeader>
         <div className="flex items-center gap-2">
           <Badge variant={investigatorsWon ? "accent" : "hidden"}>Match over</Badge>
@@ -36,13 +36,13 @@ export function OutcomePanel({ outcome, explorerUrl, onNewMatch }: OutcomePanelP
             href={explorerUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-sm text-accent hover:underline"
+            className="inline-flex items-center gap-1 text-sm font-bold text-black underline decoration-accent decoration-[3px] underline-offset-2 hover:decoration-black"
           >
             Verify the referee on stellar.expert
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
         </div>
-        <div className="border-t border-border pt-4">
+        <div className="border-t-2 border-black pt-4">
           <Button variant="primary" onClick={onNewMatch}>
             <RotateCcw className="h-4 w-4" />
             New match

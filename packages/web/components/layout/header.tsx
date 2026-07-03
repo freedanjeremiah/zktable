@@ -9,7 +9,7 @@ const NAV_LINKS = [
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-bg/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b-2 border-black bg-accent">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-6 px-6">
         <div className="flex items-center gap-6">
           <Link
@@ -17,7 +17,7 @@ export function Header() {
             className="flex items-center gap-2 font-display text-lg font-bold tracking-tight text-fg"
           >
             <span
-              className="h-2 w-2 rounded-full bg-accent"
+              className="h-2.5 w-2.5 rounded-full border-2 border-black bg-hidden"
               aria-hidden
             />
             zkTable
