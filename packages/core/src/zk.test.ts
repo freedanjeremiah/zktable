@@ -46,6 +46,14 @@ describe('zk markers', () => {
     expect(zk.deck.deal(2)).toEqual({ __zk: 'deck.deal', n: 2 })
   })
 
+  it('deck.shuffle returns a tagged descriptor with no args', () => {
+    expect(zk.deck.shuffle()).toEqual({ __zk: 'deck.shuffle' })
+  })
+
+  it('deck.proveHoldOrBluff returns a tagged descriptor with no args', () => {
+    expect(zk.deck.proveHoldOrBluff()).toEqual({ __zk: 'deck.proveHoldOrBluff' })
+  })
+
   it('sealed.commit returns a tagged descriptor with no args', () => {
     expect(zk.sealed.commit()).toEqual({ __zk: 'sealed.commit' })
   })

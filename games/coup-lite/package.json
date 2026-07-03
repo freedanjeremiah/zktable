@@ -1,0 +1,22 @@
+{
+  "name": "@zktable/coup-lite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Coup-lite: hidden 2-card hands + public claims + prove-hold-or-bluff challenges, the zkTable `deck` module showcase (defineGame + real ZK-verified card_membership proofs)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "play": "tsx src/play.ts"
+  },
+  "dependencies": {
+    "@zktable/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

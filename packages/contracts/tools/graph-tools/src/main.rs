@@ -13,6 +13,15 @@
 //!   dice-witness  --seed S --player P --salts s0,..,s4 [--dice d0,..,d4]
 //!                 --prover P.toml --json OUT.json     emit the dice_valid witness
 //!
+//! `deck` (card_membership, Coup-lite) commands - HONEST SIMPLIFICATION
+//! (PRD SS7.2): a semi-honest dealer/orchestrator computes these commitments
+//! off-chain; this module does not itself prove a valid shuffle (see the
+//! circuit's module doc):
+//!   deal          --cards c0,c1 --salts s0,s1         print per-card commitments
+//!                 (hex) + the hand JSON
+//!   card-witness  --claimed C --cards c0,c1 --salts s0,s1 --held H
+//!                 --prover P.toml --json OUT.json     emit the card_membership witness
+//!
 //! All hashing uses soroban-poseidon `poseidon2_hash::<4, BnScalar>`, identical
 //! to the Noir circuits' `Poseidon2::hash([a,b],2)` and the on-chain referee.
 
@@ -27,6 +36,10 @@ const N_LEAVES: usize = 1 << TREE_DEPTH;
 // dice_valid: fixed roll size and die sides, matching the circuit's `N`/`SIDES`.
 const DICE_N: usize = 5;
 const DICE_SIDES: u32 = 6;
+
+// card_membership: fixed hand size, matching the circuit's `H` (Coup: each
+// player holds exactly 2 influence cards).
+const CARD_H: usize = 2;
 
 // ---------- field helpers ----------
 
@@ -356,6 +369,76 @@ fn main() {
                 dice.iter().map(|d| d.to_string()).collect::<Vec<_>>()
             );
         }
+        "deal" => {
+            // Semi-honest dealer helper: compute per-card commitments for one
+            // player's hand. Does NOT prove a valid shuffle (see the
+            // card_membership circuit's module doc / the deck v1 honest
+            // simplification) - the caller/orchestrator is trusted to deal
+            // distinct cards.
+            let cards = parse_big_list(&env, &arg(&flags, "cards"));
+            let salts = parse_big_list(&env, &arg(&flags, "salts"));
+            assert_eq!(cards.len(), CARD_H, "--cards must list exactly {CARD_H} values");
+            assert_eq!(salts.len(), CARD_H, "--salts must list exactly {CARD_H} values");
+            let commitments: Vec<BigUint> =
+                cards.iter().zip(salts.iter()).map(|(c, s)| hash2(&env, c, s)).collect();
+            let json = serde_json::json!({
+                "cards": cards.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
+                "salts": salts.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+                "commitments": commitments.iter().map(hex).collect::<Vec<_>>(),
+            });
+            println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        }
+        "card-witness" => {
+            let claimed = arg_big(&env, &flags, "claimed");
+            let cards = parse_big_list(&env, &arg(&flags, "cards"));
+            let salts = parse_big_list(&env, &arg(&flags, "salts"));
+            assert_eq!(cards.len(), CARD_H, "--cards must list exactly {CARD_H} values");
+            assert_eq!(salts.len(), CARD_H, "--salts must list exactly {CARD_H} values");
+            let held = arg_u64(&flags, "held") as usize;
+            assert!(held < CARD_H, "--held must be in 0..{CARD_H}");
+
+            let commitments: Vec<BigUint> =
+                cards.iter().zip(salts.iter()).map(|(c, s)| hash2(&env, c, s)).collect();
+
+            // Prover.toml (decimal Field strings).
+            let mut toml = String::new();
+            toml.push_str(&format!("claimed_card = \"{}\"\n", claimed));
+            toml.push_str(&toml_list("c", &commitments.iter().map(|v| v.to_string()).collect::<Vec<_>>()));
+            toml.push_str(&toml_list("card", &cards.iter().map(|v| v.to_string()).collect::<Vec<_>>()));
+            toml.push_str(&toml_list("salt", &salts.iter().map(|v| v.to_string()).collect::<Vec<_>>()));
+            toml.push_str(&format!("held_index = \"{}\"\n", held));
+            std::fs::write(arg(&flags, "prover"), toml).expect("write Prover.toml");
+
+            // public_inputs blob = claimed_card | c_0 | c_1 (3*32 bytes), the
+            // exact circuit public-input order (`main`'s parameter order:
+            // claimed_card, c[2]).
+            let mut pub_blob = Vec::with_capacity(32 * (1 + CARD_H));
+            pub_blob.extend_from_slice(&be32(&claimed));
+            for c in &commitments {
+                pub_blob.extend_from_slice(&be32(c));
+            }
+            let pub_hex = {
+                let mut s = String::from("0x");
+                for b in &pub_blob {
+                    s.push_str(&format!("{:02x}", b));
+                }
+                s
+            };
+            let json = serde_json::json!({
+                "claimed_card": claimed.to_string(),
+                "held_index": held,
+                "cards": cards.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
+                "commitments": commitments.iter().map(hex).collect::<Vec<_>>(),
+                "public_inputs": pub_hex,
+            });
+            std::fs::write(arg(&flags, "json"), serde_json::to_string_pretty(&json).unwrap())
+                .expect("write json");
+            eprintln!(
+                "card witness written: claimed={} held_index={held} commitments={:?}",
+                claimed.to_string(),
+                commitments.iter().map(hex).collect::<Vec<_>>()
+            );
+        }
         "witness" => {
             let g = load_graph(&arg(&flags, "graph"));
             let edges = canonical_edges(&g);
@@ -425,7 +508,7 @@ fn main() {
         }
         other => {
             eprintln!(
-                "unknown command '{other}'. use: root | commit | witness | seed | dice-witness"
+                "unknown command '{other}'. use: root | commit | witness | seed | dice-witness | deal | card-witness"
             );
             std::process::exit(2);
         }

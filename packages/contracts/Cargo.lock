@@ -1918,6 +1918,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zktable-coup-referee"
+version = "0.1.0"
+dependencies = [
+ "soroban-env-host",
+ "soroban-poseidon",
+ "soroban-sdk",
+ "ultrahonk_soroban_verifier",
+ "zktable-verifier",
+]
+
+[[package]]
 name = "zktable-liars-dice-referee"
 version = "0.1.0"
 dependencies = [

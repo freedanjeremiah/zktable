@@ -66,6 +66,14 @@ export const zk = {
     deal(n: number): ZkMarker {
       return { __zk: 'deck.deal', n }
     },
+    /** Binds a shuffle to "prove the permutation is a valid bijection" (`valid_shuffle`). Inert marker; not implemented by any v1 module — see §7.2's honest-simplification note (M6.3 report). */
+    shuffle(): ZkMarker {
+      return { __zk: 'deck.shuffle' }
+    },
+    /** Binds a move to "prove a claimed card is held (or the challenge reveals a bluff)" (`card_membership`) — the M6.3 Coup-lite showcase's load-bearing binding. Inert marker; wiring lands in M2+. */
+    proveHoldOrBluff(): ZkMarker {
+      return { __zk: 'deck.proveHoldOrBluff' }
+    },
   },
 
   sealed: {

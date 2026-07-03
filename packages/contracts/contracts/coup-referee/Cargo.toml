@@ -1,0 +1,17 @@
+[package]
+name = "zktable-coup-referee"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["alloc"] }
+soroban-poseidon = { workspace = true }
+ultrahonk_soroban_verifier = { path = "../../crates/ultrahonk-verifier", default-features = false }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils", "alloc"] }
+soroban-env-host = "26.1.3"
+zktable-verifier = { path = "../verifier" }
