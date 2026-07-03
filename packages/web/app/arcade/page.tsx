@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "Three trustless privacy board games, one ZK SDK.",
 };
 
-const COMING_SOON_GAMES = [
+const PLAYABLE_GAMES = [
   {
     slug: "liars-dice",
     name: "Liar's Dice",
@@ -94,9 +94,9 @@ export default function ArcadePage() {
         </div>
       </div>
 
-      {/* Coming soon */}
+      {/* Also playable */}
       <div className="mt-8 grid gap-6 sm:grid-cols-2">
-        {COMING_SOON_GAMES.map((game) => (
+        {PLAYABLE_GAMES.map((game) => (
           <div
             key={game.slug}
             className="flex flex-col justify-between rounded-[var(--radius-lg)] border border-border bg-bg-elevated p-8"
@@ -104,7 +104,7 @@ export default function ArcadePage() {
             <div>
               <div className="flex items-center justify-between">
                 <game.icon className="h-6 w-6 text-fg-subtle" aria-hidden />
-                <Badge variant="outline">Coming soon</Badge>
+                <Badge variant="accent">Playable</Badge>
               </div>
               <h3 className="mt-4 font-display text-2xl font-bold tracking-tight text-fg">
                 {game.name}
@@ -122,16 +122,13 @@ export default function ArcadePage() {
                 ))}
               </div>
             </div>
-            <button
-              type="button"
-              disabled
-              className={cn(
-                buttonVariants({ variant: "outline", size: "md" }),
-                "mt-8 w-full cursor-not-allowed opacity-50",
-              )}
+            <Link
+              href={`/play/${game.slug}`}
+              className={cn(buttonVariants({ variant: "outline", size: "md" }), "mt-8 w-full")}
             >
-              Notify me
-            </button>
+              Play vs AI
+              <ArrowRight className="h-4 w-4" />
+            </Link>
           </div>
         ))}
       </div>

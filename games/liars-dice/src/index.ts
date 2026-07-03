@@ -15,3 +15,9 @@ export { CliRefereeClient, RefereeCliError, stripHexPrefix, toBe32Hex } from './
 export type { ChainBid, ChainGameState, ChainPlayer, Phase } from './referee-client.js'
 export { buildRoster, createLocalMatch, ensureContractWasms, playLiarsDice, playLocalMatch, stepLocalMatch } from './runner.js'
 export type { LocalStep, PlayLiarsDiceOptions, Roster, Transcript } from './runner.js'
+export {
+  DEFAULT_LIARS_DICE_REFEREE_WASM,
+  DEFAULT_VERIFIER_WASM,
+  DEFAULT_VK_PATH,
+  toolEnv,
+} from './paths.js'

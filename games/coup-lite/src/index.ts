@@ -17,3 +17,10 @@ export { CliRefereeClient, RefereeCliError, stripHexPrefix, toBe32Hex } from './
 export type { ChainGameState, ChainPlayer, Phase } from './referee-client.js'
 export { buildRoster, createLocalMatch, ensureContractWasms, playCoupLite, playLocalMatch, stepLocalMatch } from './runner.js'
 export type { LocalStep, PlayCoupLiteOptions, Roster, Transcript } from './runner.js'
+export {
+  DEFAULT_COUP_REFEREE_WASM,
+  DEFAULT_SHUFFLE_VK_PATH,
+  DEFAULT_VERIFIER_WASM,
+  DEFAULT_VK_PATH,
+  toolEnv,
+} from './paths.js'
