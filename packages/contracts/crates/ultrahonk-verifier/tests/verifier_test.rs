@@ -26,12 +26,15 @@ fn run(dir: &str) -> Result<(), String> {
     Ok(())
 }
 
+// Circuits live at the monorepo's packages/circuits/. Build them first
+// (packages/circuits/scripts/build_one.sh <name>). Paths are anchored to
+// CARGO_MANIFEST_DIR so they are independent of the test's working directory.
 #[test]
 fn simple_circuit_proof_verifies() -> Result<(), String> {
-    run("../../circuits/simple_circuit/target")
+    run(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../circuits/simple_circuit/target"))
 }
 
 #[test]
 fn fib_chain_proof_verifies() -> Result<(), String> {
-    run("../../circuits/fib_chain/target")
+    run(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../circuits/fib_chain/target"))
 }

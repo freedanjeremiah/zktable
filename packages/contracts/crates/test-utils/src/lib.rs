@@ -16,11 +16,14 @@ pub struct Fixture {
 impl Fixture {
     /// Loads a circuit's built artifacts.
     ///
-    /// `name` must match a directory under the top-level `circuits/` directory
-    /// (e.g. `"simple_circuit"`, `"fib_chain"`).
+    /// `name` must match a directory under the monorepo's `packages/circuits/`
+    /// directory (e.g. `"simple_circuit"`, `"fib_chain"`). Build the circuit's
+    /// artifacts first (see `packages/circuits/scripts/build_one.sh`).
     pub fn load(name: &str) -> Self {
+        // test-utils is packages/contracts/crates/test-utils; circuits live at
+        // packages/circuits (three levels up + circuits), not packages/contracts/circuits.
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../circuits")
+            .join("../../../circuits")
             .join(name)
             .join("target");
         Self {
