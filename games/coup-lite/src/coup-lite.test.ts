@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { CHARACTERS, HAND_SIZE, N_PLAYERS, START_INFLUENCE, coupLite } from './coup-lite.js'
+import { CHARACTERS, HAND_SIZE, MAX_PLAYERS, MIN_PLAYERS, N_PLAYERS, START_INFLUENCE, coupLite } from './coup-lite.js'
 import { buildRoster, createLocalMatch, playLocalMatch, stepLocalMatch } from './runner.js'
 import type { ClaimEntry, Hand } from './coup-lite.js'
 
 describe('coupLite defineGame shape', () => {
-  it('compiles via defineGame with the v1 2-player scope', () => {
+  it('compiles via defineGame with the referee-matching 2-4 player range', () => {
     expect(coupLite.def.name).toBe('coup-lite')
-    expect(coupLite.def.players.min).toBe(N_PLAYERS)
-    expect(coupLite.def.players.max).toBe(N_PLAYERS)
-    expect(N_PLAYERS).toBe(2)
+    expect(coupLite.def.players.min).toBe(MIN_PLAYERS)
+    expect(coupLite.def.players.max).toBe(MAX_PLAYERS)
+    expect(MIN_PLAYERS).toBe(2)
+    expect(MAX_PLAYERS).toBe(4)
+    expect(N_PLAYERS).toBe(2) // default demo seat count
     expect(HAND_SIZE).toBe(2)
     expect(START_INFLUENCE).toBe(2)
     expect(CHARACTERS).toHaveLength(5)
@@ -30,9 +32,10 @@ describe('a full local seeded game', () => {
     const winner = match.state.outcome!.winner
     expect(roster.map((p) => p.id)).toContain(winner)
 
-    const eliminated = match.state.public.eliminated as string
-    expect(roster.map((p) => p.id)).toContain(eliminated)
-    expect(eliminated).not.toBe(winner)
+    const eliminatedIds = match.state.public.eliminatedIds as string[]
+    expect(eliminatedIds).toHaveLength(1)
+    expect(roster.map((p) => p.id)).toContain(eliminatedIds[0])
+    expect(eliminatedIds[0]).not.toBe(winner)
 
     // The game always ends on a `challenge` move (the only move that can end it).
     expect(steps.at(-1)!.move.type).toBe('challenge')
@@ -101,7 +104,7 @@ describe('challenge resolution with known hands', () => {
     match.submit(p1, { type: 'claim', character: 0 }) // p1 truly holds character 0
     match.submit(p2, { type: 'challenge' })
 
-    expect(match.state.public.eliminated).not.toBe(p2) // not eliminated (2 -> 1)
+    expect(match.state.public.eliminatedIds).toEqual([]) // not eliminated (2 -> 1)
     const influence = match.state.public.influenceByPlayer as Record<string, number>
     expect(influence[p2]).toBe(1) // challenger lost an influence
     expect(influence[p1]).toBe(2)
@@ -163,5 +166,47 @@ describe('claimHistory bookkeeping', () => {
     match.submit(p1, { type: 'claim', character: 2 })
     const history = match.state.public.claimHistory as ClaimEntry[]
     expect(history).toEqual([{ player: p1, character: 2 }])
+  })
+})
+
+describe('3-player elimination (M8.2 turn-skip)', () => {
+  const roster = buildRoster(3)
+  const [p1, p2, p3] = roster.map((p) => p.id) as [string, string, string]
+  // Known hands so challenge outcomes are forced.
+  const handsByPlayer = { [p1]: [0, 1] as Hand, [p2]: [2, 3] as Hand, [p3]: [4, 0] as Hand }
+
+  it('skips an eliminated player and plays on to a survivor-of-3 win', () => {
+    const match = createLocalMatch(roster, { handsByPlayer }, '3p-elimination-seed')
+
+    // p2 bluffs twice; p3 (next active seat) catches it both times.
+    // Loss 1: p2 claims 4 (not held), p3 challenges -> p2 down to 1.
+    match.submit(p1, { type: 'claim', character: 0 })
+    match.submit(p2, { type: 'claim', character: 4 })
+    match.submit(p3, { type: 'challenge' })
+    expect((match.state.public.influenceByPlayer as Record<string, number>)[p2]).toBe(1)
+    expect(match.state.turn.current).toBe(p1)
+
+    // Loss 2: p2 bluffs again, p3 challenges again -> p2 eliminated.
+    match.submit(p1, { type: 'claim', character: 1 })
+    match.submit(p2, { type: 'claim', character: 4 })
+    match.submit(p3, { type: 'challenge' })
+    expect(match.state.public.eliminatedIds).toEqual([p2])
+    expect(match.state.status).toBe('active') // two players still standing
+
+    // The turn walk must now SKIP p2: p3 -> p1 (p2 out), then p1 -> p3.
+    expect(match.state.turn.current).toBe(p1)
+    expect(match.legalMoves(p2)).toEqual([])
+    match.submit(p1, { type: 'claim', character: 0 })
+    expect(match.state.turn.current).toBe(p3)
+
+    // p3 challenges p1's TRUE claim twice -> p3 eliminated -> p1 wins 3-player match.
+    match.submit(p3, { type: 'challenge' })
+    expect((match.state.public.influenceByPlayer as Record<string, number>)[p3]).toBe(1)
+    match.submit(p1, { type: 'claim', character: 1 })
+    match.submit(p3, { type: 'challenge' })
+
+    expect(match.state.status).toBe('finished')
+    expect(match.state.outcome).toEqual({ winner: p1 })
+    expect(match.state.public.eliminatedIds).toEqual([p2, p3])
   })
 })

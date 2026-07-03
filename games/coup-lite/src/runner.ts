@@ -9,7 +9,7 @@ import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createMatch } from '@zktable/core'
 import type { Match, PlayerId } from '@zktable/core'
-import { CHARACTER_NAMES, N_PLAYERS, coupLite } from './coup-lite.js'
+import { CHARACTER_NAMES, MAX_PLAYERS, MIN_PLAYERS, N_PLAYERS, coupLite } from './coup-lite.js'
 import type { CoupLiteConfig, Hand, ClaimEntry } from './coup-lite.js'
 import { CardProver } from './card-prover.js'
 import {
@@ -25,10 +25,10 @@ import { chooseMove } from './strategy.js'
 
 export type Roster = Array<{ id: PlayerId }>
 
-/** Fixed 2-player roster - this showcase's `defineGame`/on-chain demo scope (see `coup-lite.ts`'s module doc). */
-export function buildRoster(): Roster {
+/** Roster of `count` seats (defaults to the 2-player demo; the referee + engine support 2-4). */
+export function buildRoster(count: number = N_PLAYERS): Roster {
   const roster: Roster = []
-  for (let i = 0; i < N_PLAYERS; i++) roster.push({ id: `player${i + 1}` })
+  for (let i = 0; i < count; i++) roster.push({ id: `player${i + 1}` })
   return roster
 }
 
@@ -90,6 +90,8 @@ export type PlayCoupLiteOptions = {
    * Default: every seat is owned and signed by `source`.
    */
   multiSeat?: boolean
+  /** Seat count, 2-4 (referee-enforced). Defaults to 2. */
+  players?: number
 }
 
 export type Transcript = {
@@ -168,7 +170,11 @@ function nextDeadSlot(dead: [boolean, boolean]): 0 | 1 {
 export async function playCoupLite(opts: PlayCoupLiteOptions = {}): Promise<Transcript> {
   const log = opts.log ?? ((line: string) => console.log(line))
   const seed = opts.seed ?? `coup-lite-testnet-${Date.now()}`
-  const roster = buildRoster()
+  const nPlayers = opts.players ?? N_PLAYERS
+  if (nPlayers < MIN_PLAYERS || nPlayers > MAX_PLAYERS) {
+    throw new Error(`playCoupLite: players must be in [${MIN_PLAYERS}, ${MAX_PLAYERS}], got ${nPlayers}`)
+  }
+  const roster = buildRoster(nPlayers)
 
   await ensureContractWasms(log)
   const prover = new CardProver({ circuitDir: CARD_MEMBERSHIP_CIRCUIT_DIR })
@@ -176,7 +182,7 @@ export async function playCoupLite(opts: PlayCoupLiteOptions = {}): Promise<Tran
   await prover.ensureVk()
 
   const source = opts.source ?? 'alice'
-  const seatNames = seatIdentityNames(source, N_PLAYERS, opts.multiSeat ?? false)
+  const seatNames = seatIdentityNames(source, nPlayers, opts.multiSeat ?? false)
   log(`ensuring seat identities exist + are funded: ${[...new Set(seatNames)].join(', ')}…`)
   const addressByName = await ensureIdentities(seatNames)
   const playerAddresses = seatNames.map((n) => addressByName[n]!)

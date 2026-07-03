@@ -3,6 +3,8 @@ export {
   CHARACTER_NAMES,
   HAND_SIZE,
   START_INFLUENCE,
+  MAX_PLAYERS,
+  MIN_PLAYERS,
   N_PLAYERS,
   coupLite,
   seededHand,
