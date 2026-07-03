@@ -8,8 +8,10 @@ browser proving for a human Phantom). Nothing is mocked — every game runs a
 full match on-chain with real UltraHonk proofs. Full test suite green:
 **257 TypeScript tests + 92 Rust tests**, plus every circuit's `nargo test`.
 
-Branches: `zktable-build` (M0–M7), `zktable-m8` (M8). Specs for all five
-post-M7 workstreams: `docs/superpowers/specs/2026-07-03-*.md`.
+All work is merged to `main` (M8 + review pass + M8.6 web arcade). Specs
+for the five post-M7 workstreams: `docs/superpowers/specs/2026-07-03-*.md`.
+All three games are playable vs AI from the web arcade (M8.6), each driving
+live testnet with real proofs.
 
 ---
 

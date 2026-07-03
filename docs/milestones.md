@@ -365,3 +365,23 @@ includes the bb.js-VK-equals-CLI-VK byte check, a native `bb verify` of a
 browser proof, and byte-equality of public inputs against `zktable-graph
 witness`. The interactive human-Phantom browser match against testnet
 remains a pending manual acceptance run (nothing above claims otherwise).
+
+### M8.6 — The full arcade: all three games playable in the browser
+
+The arcade's two "Coming soon" placeholders are gone: Liar's Dice and
+Coup-lite now have real interactive web play (store + orchestrator + API
+routes + table pages), reusing each game package's own primitives —
+nothing mocked, every proof real. Verified end-to-end by a headless
+browser driving live testnet matches:
+
+| Evidence (live testnet, played through the web UI) | Value |
+|---|---|
+| Liar's Dice — deploy → sealed seed → 2 real `dice_valid` proofs → human bid 2×3 → AI raised 2×4 → human challenged → all dice revealed on-chain → bidder loses (only one 4 on the table), human wins | referee `CCLYQDBRVLYC7537ZOM5BEONDR72QKQACUR6ZFWTIDMTQ55UUINTWU2R` |
+| Coup-lite — deploy → seed commit-reveal → real `valid_shuffle` proof → position-dealt hands → four challenge exchanges (two TRUE claims proven with real `card_membership` proofs, one BLUFF caught) → AI eliminated, human wins | referee `CACDBMS2VBMTOC2RYXKNKJL7P7FMUZCDERQUGK5MAZIGOAIP34WHPNGK` |
+
+Both pages resume from `?match=<id>`, render error-free (zero browser
+console errors across landing/arcade/all three games), and the PRD M6
+acceptance line — "all three games are playable vs AI from the lobby" —
+is now true of the web app, not just the CLI runners. (Demo scope: these
+two games use single-process in-memory stores; the M8.4 durable-store
+machinery remains Blackout-only for now.)
