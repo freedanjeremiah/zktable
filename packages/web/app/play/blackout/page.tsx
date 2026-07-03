@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -62,7 +62,55 @@ export default function BlackoutBoardPage() {
     setError(null);
     setPendingPick(null);
     revealCountRef.current = 0;
+    window.history.replaceState(null, "", "/play/blackout");
   }, []);
+
+  // Resume a match from the URL (M8.4): /play/blackout?match=<id> — a page
+  // reload (or a second browser) picks the match back up from the durable
+  // store instead of orphaning it.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("match");
+    if (!id) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/blackout/matches/${id}`);
+        const state = await readJson<MatchDto>(res);
+        if (cancelled) return;
+        setMatchId(id);
+        setExplorerUrl(state.explorerUrl);
+        setDto(state);
+        const human = state.players.find((p) => p.role === "investigator" && !p.isAi);
+        setHumanPlayerId(human?.id ?? null);
+        setPhase(state.status === "finished" ? "finished" : "active");
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Light polling while someone else (AI or another browser) is on the
+  // clock, so this view keeps up without a manual refresh.
+  useEffect(() => {
+    if (phase !== "active" || !matchId || busyLabel) return;
+    if (dto?.currentPlayer && !dto.currentPlayer.isAi && dto.currentPlayer.id === humanPlayerId) return;
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const res = await fetch(`/api/blackout/matches/${matchId}`);
+          const state = await readJson<MatchDto>(res);
+          setDto(state);
+          if (state.status === "finished") setPhase("finished");
+        } catch {
+          // Transient poll failures are fine — the next tick retries.
+        }
+      })();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [phase, matchId, busyLabel, dto, humanPlayerId]);
 
   /** Drive every consecutive AI turn (the API already loops server-side; this is a thin
    *  client-side safety net in case the server ever stops mid-AI-run). */
@@ -103,6 +151,7 @@ export default function BlackoutBoardPage() {
         setMatchId(json.matchId);
         setExplorerUrl(json.explorerUrl);
         setDto(json.state);
+        window.history.replaceState(null, "", `/play/blackout?match=${json.matchId}`);
         const human = json.state.players.find((p) => p.role === "investigator" && !p.isAi);
         setHumanPlayerId(human?.id ?? null);
 

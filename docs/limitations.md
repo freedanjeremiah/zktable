@@ -49,16 +49,23 @@ server-orchestrated match creation. Who may claim a seat in an open lobby
 is an API-layer concern (the durable-store/matchmaking workstream), not a
 contract one. Proof anti-replay (§7) is likewise unchanged.
 
-## 3. Match state is in-memory and single-process
+## 3. Match state is durable-capable; scaling the orchestrator is not
 
-The web app's match store (`packages/web/lib/blackout/match-store.ts`) is a
-`Map` attached to `globalThis`, scoped to one Node process. It survives
-Next.js dev-server Fast Refresh reloads but not a server restart, and
-doesn't work across multiple server instances. See
-`docs/adr/006-per-match-referee-in-memory-store.md`. A production
-deployment needs a persistent store (e.g. a database keyed by match ID,
-storing the referee contract ID and roster) — this doesn't require changing
-any referee's on-chain logic, only how matches are created and looked up.
+**Improved in M8.4:** matches are persisted as serializable `MatchRecord`s
+behind a `MatchStore` interface (`packages/web/lib/blackout/match-store.ts`).
+With `REDIS_URL` set, records live in Redis (24 h TTL) and survive server
+restarts; live runtimes are rehydrated by replaying the match's own event
+log through a fresh engine mirror (`match-record.ts`). Matches are
+resumable by URL (`/play/blackout?match=<id>`), human seats are bound to a
+browser session cookie, and an open-match lobby
+(`GET /api/blackout/matches`, `POST .../join`) exists.
+
+**Remaining caveats:** without `REDIS_URL` the default store is still the
+in-process map (demo mode); proving/AI still shell out to local binaries,
+so one match must be driven by one process at a time (single-writer
+assumed — no cross-instance move locking); and the session cookie is a
+convenience binding, not authentication (the contract-level guarantee is
+M8.1's `require_auth`).
 
 ## 4. The AI Phantom proves server-side, using its own secret — legitimate, but browser proving for a human in the hidden role isn't wired up
 

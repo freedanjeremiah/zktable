@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { BlackoutApiError } from "@/lib/blackout/errors";
 import { advanceAiTurns, fetchDto, requireMatch, submitSignedHumanMove } from "@/lib/blackout/orchestrator";
+import { readSessionToken } from "@/lib/blackout/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,12 +33,13 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   }
 
   try {
-    const match = requireMatch(id);
+    const match = await requireMatch(id);
     await submitSignedHumanMove(match, {
       player: body.player,
       node: body.node,
       ticket: body.ticket,
       signedXdr: body.signedXdr,
+      sessionToken: readSessionToken(request),
     });
     await advanceAiTurns(match);
     return NextResponse.json(await fetchDto(match));

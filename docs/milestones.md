@@ -307,3 +307,16 @@ rejections.
 | Coup referee (seed commit-reveal on-chain → `valid_shuffle` proof verified cross-contract → position-assigned hands → real `card_membership` challenge proofs → outcome) | `CC6XWHXGKDZNB5TOVJ4CTNP7XCPQRAJ42FZRNNGGWDVGBP6R2IKBDFOV` |
 | `card_membership` verifier / `valid_shuffle` verifier | `CAKAZZWD4JAHM2INJX5HYM2E3DYV72JDAHBCQJRS6HDQ2ODB46LNOZXO` / `CCUS3PAQBOVT2AVI637PTTLQQWSVRPWXH4OHNCPNLW5PWJ3VYZ7EE5Q2` |
 | On-chain joint seed for that match | `0x23ab9cec95cc5ec7d8407a3f8dec8815db6707bc1511b7b81decf242e60e142c` |
+
+### M8.4 — Durable match store + lobby
+
+Matches persist as serializable `MatchRecord`s behind a small async
+`MatchStore` interface: memory (default demo mode) or Redis via
+`REDIS_URL` (`zktable:match:{id}` JSON, 24 h TTL, open-match index set).
+Live runtimes are rehydrated by replaying the match's own event log
+through a fresh local engine mirror — verified by a round-trip test that
+reproduces the mirror state, the Phantom's secret, and the seat bindings
+exactly. Human seats bind to an httpOnly session cookie (closing the
+"anyone with the matchId can move any seat" API hole); matches resume
+from `/play/blackout?match=<id>` with light polling; an open-match lobby
+ships as `GET /api/blackout/matches` + `POST .../[id]/join`.

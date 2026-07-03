@@ -25,7 +25,7 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
   }
 
   try {
-    const match = requireMatch(id);
+    const match = await requireMatch(id);
     const { xdr } = await prepareHumanMove(match, { player: body.player, node: body.node, ticket: body.ticket });
     return NextResponse.json({ xdr });
   } catch (err) {

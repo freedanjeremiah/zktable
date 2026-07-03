@@ -15,7 +15,7 @@ export const maxDuration = 300;
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   try {
-    const match = requireMatch(id);
+    const match = await requireMatch(id);
     await advanceAiTurns(match);
     return NextResponse.json(await fetchDto(match));
   } catch (err) {

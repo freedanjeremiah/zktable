@@ -58,6 +58,10 @@ export type CreateMatchOptions = {
    * `start()` is deferred until the signed start lands.
    */
   walletAddress?: string;
+  /** List the match in the open lobby with its human seat unclaimed. */
+  open?: boolean;
+  /** The creating browser's session token — claims the human seat unless `open`. */
+  sessionToken?: string;
   log?: (line: string) => void;
 };
 
@@ -67,7 +71,7 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
 }
 
-function buildAgent(model: string | undefined, role: "phantom" | "investigator"): Agent {
+export function buildAgent(model: string | undefined, role: "phantom" | "investigator"): Agent {
   const policy = role === "phantom" ? blackoutPhantomPolicy : blackoutInvestigatorPolicy;
   if (process.env.ANTHROPIC_API_KEY) {
     return new ClaudeAgent({
@@ -202,7 +206,8 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
     nRounds: DEFAULT_N_ROUNDS,
     revealRounds: DEFAULT_REVEAL_ROUNDS,
   };
-  const local = createLocalMatch(roster, config, `blackout-web-${Date.now()}`);
+  const localSeed = `blackout-web-${Date.now()}`;
+  const local = createLocalMatch(roster, config, localSeed);
 
   // AI seats: the Phantom always, plus the LAST `aiInvestigatorCount`
   // investigator seats — so with the default (investigators=3,
@@ -212,6 +217,16 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
   const aiInvestigatorEntries = investigatorEntries.slice(investigatorEntries.length - aiInvestigatorCount);
   for (const p of aiInvestigatorEntries) {
     agents.set(p.id, buildAgent(opts.model, "investigator"));
+  }
+
+  // Human seats get a session binding (M8.4): claimed by the creator's
+  // token unless the match is opened to the lobby.
+  const seats: MatchRuntime["seats"] = {};
+  for (const p of roster) {
+    if (agents.has(p.id)) continue;
+    seats[p.id] = opts.open
+      ? { open: true }
+      : { open: false, token: opts.sessionToken };
   }
 
   const runtime: MatchRuntime = {
@@ -226,18 +241,33 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
     indexToPlayer,
     phantom: { pos: phantomStart, salt: phantomSalt },
     agents,
+    model: opts.model,
     config,
     explorerUrl: `${EXPLORER_BASE}/${refereeContractId}`,
     network,
     source,
     createdAt: Date.now(),
+    localSeed,
     log: [],
     walletSeat: walletSeatEntry,
     pendingStart,
+    seats,
+    open: opts.open ?? false,
   };
-  saveMatch(runtime);
+  await saveMatch(runtime);
 
   return fetchDto(runtime);
+}
+
+/** Claims an open human seat for the caller's session token. */
+export async function joinOpenMatch(runtime: MatchRuntime, sessionToken: string): Promise<PlayerId> {
+  const openSeat = Object.entries(runtime.seats).find(([, seat]) => seat.open && !seat.token);
+  if (!openSeat) throw new BlackoutApiError(409, "no open seat to join in this match");
+  const [playerId] = openSeat;
+  runtime.seats[playerId] = { open: false, token: sessionToken };
+  runtime.open = Object.values(runtime.seats).some((seat) => seat.open && !seat.token);
+  await saveMatch(runtime);
+  return playerId;
 }
 
 /**
@@ -254,8 +284,8 @@ export async function completeSignedStart(runtime: MatchRuntime, signedXdr: stri
   saveMatch(runtime);
 }
 
-export function requireMatch(matchId: string): MatchRuntime {
-  const runtime = getMatch(matchId);
+export async function requireMatch(matchId: string): Promise<MatchRuntime> {
+  const runtime = await getMatch(matchId, buildAgent);
   if (!runtime) throw new BlackoutApiError(404, `no match with id "${matchId}"`);
   return runtime;
 }
@@ -275,17 +305,18 @@ export async function fetchDto(runtime: MatchRuntime): Promise<MatchDto> {
  */
 export async function submitHumanMove(
   runtime: MatchRuntime,
-  opts: { player: number; node: number; ticket: number },
+  opts: { player: number; node: number; ticket: number; sessionToken?: string },
 ): Promise<void> {
   const { playerId, state } = await validateHumanMove(runtime, opts);
   await runtime.client.submitPublicMove(runtime.refereeId, { player: opts.player, node: opts.node, ticket: opts.ticket });
   recordHumanMove(runtime, playerId, state.round, opts);
+  await saveMatch(runtime);
 }
 
 /** Shared status/turn/seat/legality validation for every human-move path. */
 async function validateHumanMove(
   runtime: MatchRuntime,
-  opts: { player: number; node: number; ticket: number },
+  opts: { player: number; node: number; ticket: number; sessionToken?: string },
 ): Promise<{ playerId: PlayerId; state: ChainGameState }> {
   const state = await runtime.client.gameState(runtime.refereeId);
   if (state.status !== "Active") {
@@ -302,6 +333,13 @@ async function validateHumanMove(
   const rosterEntry = runtime.roster.find((p) => p.id === playerId)!;
   if (rosterEntry.role !== "investigator") {
     throw new BlackoutApiError(400, "only Investigators submit public moves");
+  }
+
+  // Seat ownership (M8.4): a token-bound human seat only accepts its own
+  // browser session. Unbound seats (legacy/demo flow) accept anyone.
+  const seat = runtime.seats[playerId];
+  if (seat?.token && seat.token !== opts.sessionToken) {
+    throw new BlackoutApiError(403, `seat "${playerId}" belongs to a different session`);
   }
 
   const view = runtime.local.view(playerId);
@@ -359,11 +397,12 @@ export async function prepareHumanMove(
 /** Lands a Freighter-signed `submit_public_move`, then mirrors it locally. */
 export async function submitSignedHumanMove(
   runtime: MatchRuntime,
-  opts: { player: number; node: number; ticket: number; signedXdr: string },
+  opts: { player: number; node: number; ticket: number; signedXdr: string; sessionToken?: string },
 ): Promise<void> {
   const { playerId, state } = await validateHumanMove(runtime, opts);
   await sendSignedTx(runtime.network, opts.signedXdr);
   recordHumanMove(runtime, playerId, state.round, opts);
+  await saveMatch(runtime);
 }
 
 export type AdvanceAiTurnsResult = { movesPlayed: number };
@@ -407,6 +446,9 @@ export async function advanceAiTurns(
     const round = state.round;
 
     if (rosterEntry.role === "phantom") {
+      if (!runtime.phantom) {
+        throw new Error("advanceAiTurns: no server-held phantom secret for this match");
+      }
       const newSalt = randomSalt();
       try {
         const proof = await prover.prove(cityGraphData, {
@@ -472,5 +514,6 @@ export async function advanceAiTurns(
     movesPlayed++;
   }
 
+  if (movesPlayed > 0) await saveMatch(runtime);
   return { movesPlayed };
 }

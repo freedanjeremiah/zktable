@@ -10,7 +10,7 @@ export const maxDuration = 60;
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   try {
-    const match = requireMatch(id);
+    const match = await requireMatch(id);
     const dto = await fetchDto(match);
     return NextResponse.json(dto);
   } catch (err) {
