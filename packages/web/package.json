@@ -1,9 +1,33 @@
 {
   "name": "@zktable/web",
-  "version": "0.1.0",
-  "private": true,
-  "description": "zkTable arcade \u2014 Next.js web shell (landing, lobby, wallet connect)",
+  "version": "0.1.1",
+  "description": "zkTable arcade — Next.js web shell (landing, lobby, wallet connect)",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freedanjeremiah/zktable.git",
+    "directory": "packages/web"
+  },
+  "homepage": "https://github.com/freedanjeremiah/zktable#readme",
+  "bugs": {
+    "url": "https://github.com/freedanjeremiah/zktable/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "app",
+    "components",
+    "lib",
+    "public",
+    "scripts",
+    "next.config.ts",
+    "postcss.config.mjs",
+    "tsconfig.json",
+    "eslint.config.mjs",
+    "README.md"
+  ],
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build --webpack",
@@ -43,5 +67,8 @@
     "tailwindcss": "^4.3.2",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

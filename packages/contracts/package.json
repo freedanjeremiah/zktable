@@ -1,8 +1,31 @@
 {
   "name": "@zktable/contracts",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1",
   "description": "Generic Soroban referee contract + vendored UltraHonk verifier for zkTable",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freedanjeremiah/zktable.git",
+    "directory": "packages/contracts"
+  },
+  "homepage": "https://github.com/freedanjeremiah/zktable#readme",
+  "bugs": {
+    "url": "https://github.com/freedanjeremiah/zktable/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "contracts",
+    "crates",
+    "tools/graph-tools/src",
+    "tools/graph-tools/Cargo.toml",
+    "tools/graph-tools/Cargo.lock",
+    "scripts",
+    "Cargo.toml",
+    "Cargo.lock",
+    "README.md"
+  ],
   "scripts": {
     "build": "cargo +stable build --release --target wasm32v1-none",
     "test": "cargo +stable test",

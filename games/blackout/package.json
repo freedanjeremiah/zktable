@@ -1,12 +1,35 @@
 {
   "name": "@zktable/blackout",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.1.1",
   "description": "Blackout: Scotland-Yard-style hidden pursuit, the zkTable flagship game (defineGame + real ZK-verified hidden moves)",
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/freedanjeremiah/zktable.git",
+    "directory": "games/blackout"
   },
+  "homepage": "https://github.com/freedanjeremiah/zktable#readme",
+  "bugs": {
+    "url": "https://github.com/freedanjeremiah/zktable/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format esm,cjs --dts",
     "test": "vitest run",
@@ -20,5 +43,8 @@
   "devDependencies": {
     "@zktable/agents": "workspace:*",
     "tsx": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
