@@ -126,6 +126,7 @@ pub struct Bid {
 #[contracttype]
 #[derive(Clone)]
 pub struct PlayerData {
+    pub address: Address,
     pub nonce_commitment: Option<BytesN<32>>,
     pub nonce: Option<BytesN<32>>,
     pub dice_commitments: Vec<BytesN<32>>, // empty == not yet rolled
@@ -271,6 +272,15 @@ fn check_turn(env: &Env, player: u32) -> Result<(), Error> {
     Ok(())
 }
 
+/// Loads the seat and requires its owner's authorization. Every per-seat
+/// entry point calls this before touching state (the seat addresses are
+/// fixed at construction — see spec M8.1).
+fn require_seat_auth(players: &Vec<PlayerData>, player: u32) -> Result<PlayerData, Error> {
+    let p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+    p.address.require_auth();
+    Ok(p)
+}
+
 fn first_alive(players: &Vec<PlayerData>) -> u32 {
     for i in 0..players.len() {
         if players.get(i).unwrap().alive {
@@ -303,20 +313,22 @@ fn all_by<F: Fn(&PlayerData) -> bool>(players: &Vec<PlayerData>, f: F) -> bool {
 
 #[contractimpl]
 impl LiarsDiceRefereeContract {
-    /// Set config once at deploy. `n_players` must be 2, `dice_per_player`
-    /// must be 5, `sides` must be 6 — the only values matching the fixed
-    /// `dice_valid` circuit and this v1 referee's single-round soundness
-    /// (see module doc).
+    /// Set config once at deploy. `players` is the per-seat owner address
+    /// vector (seat i is owned — and its moves signed — by `players[i]`);
+    /// its length must be 2, `dice_per_player` must be 5, `sides` must be
+    /// 6 — the only values matching the fixed `dice_valid` circuit and this
+    /// v1 referee's single-round soundness (see module doc).
     pub fn __constructor(
         env: Env,
         verifier: Address,
-        n_players: u32,
+        players: Vec<Address>,
         dice_per_player: u32,
         sides: u32,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&key_verifier()) {
             return Err(Error::AlreadyInitialized);
         }
+        let n_players = players.len();
         if n_players != N_PLAYERS || dice_per_player != DICE_N || sides != SIDES {
             return Err(Error::UnsupportedConfig);
         }
@@ -326,9 +338,10 @@ impl LiarsDiceRefereeContract {
         env.storage().instance().set(&key_sides(), &sides);
         set_phase(&env, Phase::CommitNonce);
 
-        let mut players: Vec<PlayerData> = Vec::new(&env);
-        for _ in 0..n_players {
-            players.push_back(PlayerData {
+        let mut roster: Vec<PlayerData> = Vec::new(&env);
+        for i in 0..n_players {
+            roster.push_back(PlayerData {
+                address: players.get(i).unwrap(),
                 nonce_commitment: None,
                 nonce: None,
                 dice_commitments: Vec::new(&env),
@@ -336,7 +349,7 @@ impl LiarsDiceRefereeContract {
                 alive: true,
             });
         }
-        set_players(&env, &players);
+        set_players(&env, &roster);
 
         let empty_bids: Vec<Bid> = Vec::new(&env);
         env.storage().instance().set(&key_bidlog(), &empty_bids);
@@ -353,7 +366,7 @@ impl LiarsDiceRefereeContract {
             return Err(Error::WrongPhase);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if p.nonce_commitment.is_some() {
             return Err(Error::AlreadyCommitted);
         }
@@ -376,7 +389,7 @@ impl LiarsDiceRefereeContract {
             return Err(Error::WrongPhase);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if p.nonce.is_some() {
             return Err(Error::AlreadyNonceRevealed);
         }
@@ -420,7 +433,7 @@ impl LiarsDiceRefereeContract {
             return Err(Error::BadArrayLength);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if !p.dice_commitments.is_empty() {
             return Err(Error::AlreadyRolled);
         }
@@ -461,6 +474,7 @@ impl LiarsDiceRefereeContract {
             return Err(Error::WrongPhase);
         }
         check_turn(&env, player)?;
+        require_seat_auth(&get_players(&env), player)?;
         let sides: u32 = env.storage().instance().get(&key_sides()).unwrap();
         if face < 1 || face > sides {
             return Err(Error::InvalidFace);
@@ -499,6 +513,7 @@ impl LiarsDiceRefereeContract {
             return Err(Error::WrongPhase);
         }
         check_turn(&env, player)?;
+        require_seat_auth(&get_players(&env), player)?;
         let current: Vec<Bid> = env
             .storage()
             .instance()
@@ -523,7 +538,7 @@ impl LiarsDiceRefereeContract {
             return Err(Error::BadArrayLength);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if !p.revealed_dice.is_empty() {
             return Err(Error::AlreadyDiceRevealed);
         }

@@ -17,7 +17,10 @@
 //! verify via `bb verify` against `dice_valid_vk`.
 
 use soroban_env_host::DiagnosticLevel;
-use soroban_sdk::{testutils::Address as _, Address, Bytes, BytesN, Env, Vec as SorobanVec};
+use soroban_sdk::{
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    Address, Bytes, BytesN, Env, IntoVal, Vec as SorobanVec,
+};
 use zktable_liars_dice_referee::{Bid, Error, GameState, LiarsDiceRefereeContract, Phase};
 use zktable_verifier::UltraHonkVerifierContract;
 
@@ -111,6 +114,9 @@ fn salts_vec(env: &Env, xs: &[u32]) -> SorobanVec<BytesN<32>> {
 fn setup_env() -> Env {
     let env = Env::default();
     env.cost_estimate().budget().reset_unlimited();
+    // These tests exercise game logic, not auth; per-seat require_auth is
+    // covered by the dedicated auth test at the bottom of this file.
+    env.mock_all_auths();
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
     env
 }
@@ -120,8 +126,18 @@ fn register_verifier(env: &Env) -> Address {
     env.register(UltraHonkVerifierContract, (vk_bytes,))
 }
 
+fn seat_addresses(env: &Env) -> SorobanVec<Address> {
+    let mut v = SorobanVec::new(env);
+    v.push_back(Address::generate(env));
+    v.push_back(Address::generate(env));
+    v
+}
+
 fn register_referee(env: &Env, verifier: Address) -> Address {
-    env.register(LiarsDiceRefereeContract, (verifier, 2u32, 5u32, 6u32))
+    env.register(
+        LiarsDiceRefereeContract,
+        (verifier, seat_addresses(env), 5u32, 6u32),
+    )
 }
 
 fn game_state(env: &Env, referee_id: &Address) -> GameState {
@@ -412,7 +428,12 @@ fn constructor_rejects_unsupported_player_count() {
         let env = Env::default();
         env.cost_estimate().budget().reset_unlimited();
         let verifier = Address::generate(&env);
-        let _ = env.register(LiarsDiceRefereeContract, (verifier, 3u32, 5u32, 6u32));
+        // Three seat addresses — the v1 referee only supports exactly 2.
+        let mut three_seats = SorobanVec::new(&env);
+        for _ in 0..3 {
+            three_seats.push_back(Address::generate(&env));
+        }
+        let _ = env.register(LiarsDiceRefereeContract, (verifier, three_seats, 5u32, 6u32));
     });
     let panic = result.expect_err("expected constructor to panic");
     let msg = panic.downcast_ref::<String>().map(|s| s.as_str()).unwrap_or("");
@@ -420,4 +441,54 @@ fn constructor_rejects_unsupported_player_count() {
         msg.contains("Error(Contract, #2)"),
         "constructor should fail with UnsupportedConfig (#2), got: {msg}"
     );
+}
+
+// ---------- 8. auth: a signer who doesn't own the seat is rejected ----------
+
+#[test]
+fn wrong_signer_cannot_act_for_a_seat() {
+    let env = Env::default();
+    env.cost_estimate().budget().reset_unlimited();
+    let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
+    let verifier_id = register_verifier(&env);
+
+    let seat0 = Address::generate(&env);
+    let seat1 = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let mut seats = SorobanVec::new(&env);
+    seats.push_back(seat0.clone());
+    seats.push_back(seat1.clone());
+    let referee_id = env.register(LiarsDiceRefereeContract, (verifier_id, seats, 5u32, 6u32));
+    let client =
+        zktable_liars_dice_referee::LiarsDiceRefereeContractClient::new(&env, &referee_id);
+
+    // The attacker signs seat 0's nonce commitment: require_auth(seat0) must
+    // abort the invocation.
+    let commitment = hex32(&env, NONCE0_COMMITMENT_HEX);
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &referee_id,
+            fn_name: "commit_nonce",
+            args: (0u32, commitment.clone()).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let res = client.try_commit_nonce(&0, &commitment);
+    assert!(res.is_err(), "attacker-signed commit_nonce must be rejected");
+
+    // Seat 0's own signature works.
+    env.set_auths(&[]);
+    env.mock_auths(&[MockAuth {
+        address: &seat0,
+        invoke: &MockAuthInvoke {
+            contract: &referee_id,
+            fn_name: "commit_nonce",
+            args: (0u32, commitment.clone()).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.commit_nonce(&0, &commitment);
+    let state = game_state(&env, &referee_id);
+    assert!(state.players.get(0).unwrap().committed);
 }
