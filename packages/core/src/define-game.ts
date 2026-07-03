@@ -55,6 +55,10 @@ export function defineGame(def: GameDefinition): Game {
     )
   }
 
+  if (def.turn.eliminated !== undefined && typeof def.turn.eliminated !== 'function') {
+    throw new Error('defineGame: "turn.eliminated", if provided, must be a function')
+  }
+
   const moveEntries = Object.entries(def.turn.moves ?? {})
   if (moveEntries.length === 0) {
     throw new Error('defineGame: "turn.moves" must declare at least one move')

@@ -14,7 +14,7 @@
 // the "expected others" the brief asks for.
 
 import type { Move, PlayerView } from '@zktable/core'
-import { DICE_PER_PLAYER, N_PLAYERS, SIDES } from './liars-dice.js'
+import { SIDES } from './liars-dice.js'
 import type { BidEntry } from './liars-dice.js'
 
 // --- seeded PRNG (mirrors blackout/src/strategy.ts) -------------------------
@@ -49,16 +49,26 @@ export function pickSeeded<T>(items: readonly T[], seed: string): T {
 // --- helpers -----------------------------------------------------------
 
 function ownDice(view: PlayerView): number[] {
-  return (view.self.secret.dice as number[] | undefined) ?? []
+  // The own-id entry of the public mirror is authoritative: multi-round
+  // re-rolls (M8.2) live in `public.diceByPlayer` because `apply` is pure
+  // and cannot rewrite secrets. Reading only this player's own entry keeps
+  // the "never read other players' dice" principle intact.
+  const mirror = (view.public.diceByPlayer as Record<string, number[]> | undefined)?.[view.self.id]
+  return mirror ?? (view.self.secret.dice as number[] | undefined) ?? []
 }
 
 function countFace(dice: number[], face: number): number {
   return dice.filter((d) => d === face).length
 }
 
-/** Total dice in play across all players — a public constant, not derived from anyone's hidden roll. */
-function totalDiceInPlay(): number {
-  return N_PLAYERS * DICE_PER_PLAYER
+/**
+ * Total dice in play — public info (dice COUNTS are open in Liar's Dice,
+ * only their faces are hidden). Read from the mirror's per-player rolls so
+ * multi-round die loss and eliminations are reflected automatically.
+ */
+function totalDiceInPlay(view: PlayerView): number {
+  const diceByPlayer = (view.public.diceByPlayer as Record<string, number[]>) ?? {}
+  return Object.values(diceByPlayer).reduce((sum, dice) => sum + dice.length, 0)
 }
 
 // --- policy --------------------------------------------------------------
@@ -112,7 +122,7 @@ export function chooseMove(view: PlayerView, seed: string): Move {
 
   const own = ownDice(view)
   const ownMatch = countFace(own, cur.face)
-  const unknownCount = Math.max(totalDiceInPlay() - own.length, 0)
+  const unknownCount = Math.max(totalDiceInPlay(view) - own.length, 0)
   const expected = ownMatch + unknownCount / SIDES
   const slack = pickSeeded([0.5, 0.75, 1, 1.25, 1.5], `${seed}:slack`)
 

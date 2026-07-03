@@ -89,6 +89,14 @@ export type GameDefinition = {
   turn: {
     order: TurnOrder
     phases?: string[]
+    /**
+     * Pure predicate: is this player out of the game? When present, the
+     * engine skips eliminated seats while advancing the turn (round still
+     * increments whenever the walk crosses the top of `order`) and returns
+     * no legal moves for them. Derive it from your own `public` state —
+     * the engine keeps no elimination state of its own.
+     */
+    eliminated?: (state: MatchState, playerId: PlayerId) => boolean
     moves: Record<string, MoveSpec>
   }
   reveal?: { when: (state: MatchState) => boolean; what: string[] }

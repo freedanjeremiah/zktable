@@ -99,6 +99,9 @@ export class Match {
     if (this.state.status !== 'active' || this.state.turn.current !== playerId) {
       return []
     }
+    if (this.game.def.turn.eliminated?.(this.state, playerId)) {
+      return []
+    }
     const view = this.viewWithoutLegalMoves(playerId)
     const moves: Move[] = []
     for (const spec of Object.values(this.game.def.turn.moves)) {
@@ -133,12 +136,22 @@ export class Match {
     const ctx: MoveContext = { playerId, players: this.state.players, config: this.config }
     let nextState = spec.apply(this.state, move, ctx)
 
+    const eliminated = this.game.def.turn.eliminated
     nextState = applyRevealCheckpoint(nextState, this.game.def.reveal)
-    nextState = advanceTurn(nextState)
+    nextState = advanceTurn(nextState, eliminated)
 
     const outcome = this.game.def.end(nextState)
     if (outcome !== null) {
       nextState = { ...nextState, status: 'finished', outcome }
+    } else if (eliminated) {
+      // A game with elimination MUST declare a winner once the field is down
+      // to one seat — otherwise the turn can never legally advance again.
+      const active = nextState.turn.order.filter((id) => !eliminated(nextState, id))
+      if (active.length <= 1) {
+        throw new Error(
+          'Match.submit: all but one player are eliminated but end() returned null — the game definition must produce an outcome',
+        )
+      }
     }
 
     this.state = nextState
@@ -248,18 +261,31 @@ function applyRevealCheckpoint(
   return { ...state, public: { ...state.public, reveals } }
 }
 
-function advanceTurn(state: MatchState): MatchState {
+/**
+ * Advance to the next seat in `order`, skipping seats the game declares
+ * eliminated. `round` increments whenever the walk crosses the top of the
+ * order — skipped seats count as crossed, so round numbering stays stable
+ * as players drop out. If no other active seat exists, the turn stays put
+ * (the caller enforces that `end()` then produces an outcome).
+ */
+function advanceTurn(
+  state: MatchState,
+  eliminated?: (state: MatchState, playerId: PlayerId) => boolean,
+): MatchState {
   const { order, current, round, phase } = state.turn
   const currentIndex = order.indexOf(current)
-  const nextIndex = (currentIndex + 1) % order.length
-  const wrapped = nextIndex === 0
-  return {
-    ...state,
-    turn: {
-      order,
-      phase,
-      current: order[nextIndex]!,
-      round: wrapped ? round + 1 : round,
-    },
+  let nextRound = round
+  let nextIndex = currentIndex
+  for (let step = 0; step < order.length; step++) {
+    nextIndex = (nextIndex + 1) % order.length
+    if (nextIndex === 0) nextRound += 1
+    const candidate = order[nextIndex]!
+    if (candidate !== current && eliminated?.(state, candidate)) continue
+    return {
+      ...state,
+      turn: { order, phase, current: candidate, round: nextRound },
+    }
   }
+  // Every other seat is eliminated; leave the turn where it is.
+  return { ...state, turn: { order, phase, current, round: nextRound } }
 }

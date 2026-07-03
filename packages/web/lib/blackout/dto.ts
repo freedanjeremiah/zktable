@@ -46,6 +46,19 @@ export type MatchDto = {
   proofStatus: ProofStatus | null;
   log: MatchEvent[];
   mapMeta: { name: string; nodeCount: number };
+  /** Wallet-bound human seat, when the match was created with a Freighter
+   *  address — its moves must go through prepare/sign/submit. */
+  walletSeat: { player: number; address: string } | null;
+  /** Unsigned `set_public_start` XDR the wallet must sign before the match
+   *  can start (present only while the match is still in Lobby). */
+  pendingStart: { player: number; node: number; xdr: string } | null;
+  /** The rounds at which the Phantom must reveal — the match's OWN config,
+   *  so client and server never disagree on reveal timing. */
+  revealRounds: number[];
+  /** The Phantom seat is a human proving in their browser (M8.5). */
+  phantomHuman: boolean;
+  /** Waiting for the browser to commit the Phantom's hidden start. */
+  pendingPhantomStart: boolean;
 };
 
 /** The subset of `MatchRuntime` `toDto` needs — kept narrow so this stays unit-testable. */
@@ -61,6 +74,13 @@ export type DtoContext = {
   local: { view(id: PlayerId): PlayerView };
   log: MatchEvent[];
   lastProof?: ProofStatus;
+  walletSeat?: { player: number; address: string };
+  pendingStart?: { player: number; node: number; xdr: string };
+  phantomHuman?: boolean;
+  pendingPhantomStart?: boolean;
+  config?: { revealRounds?: number[] };
+  /** Overrides mirror-derived legal moves (human-Phantom matches have no mirror). */
+  legalMovesFor?: (playerId: PlayerId) => Move[] | undefined;
 };
 
 export function toDto(state: ChainGameState, ctx: DtoContext): MatchDto {
@@ -89,7 +109,11 @@ export function toDto(state: ChainGameState, ctx: DtoContext): MatchDto {
           id: currentId,
           role: currentRoster.role,
           isAi: currentIsAi,
-          legalMoves: currentIsAi ? undefined : ctx.local.view(currentId).legalMoves,
+          legalMoves: currentIsAi
+            ? undefined
+            : ctx.legalMovesFor
+              ? ctx.legalMovesFor(currentId)
+              : ctx.local.view(currentId).legalMoves,
         }
       : null;
 
@@ -116,5 +140,10 @@ export function toDto(state: ChainGameState, ctx: DtoContext): MatchDto {
     proofStatus: ctx.lastProof ?? null,
     log: ctx.log,
     mapMeta: { name: CITY.name, nodeCount: CITY.nodes.length },
+    walletSeat: ctx.walletSeat ?? null,
+    pendingStart: ctx.pendingStart ?? null,
+    revealRounds: ctx.config?.revealRounds ?? [],
+    phantomHuman: ctx.phantomHuman ?? false,
+    pendingPhantomStart: ctx.pendingPhantomStart ?? false,
   };
 }

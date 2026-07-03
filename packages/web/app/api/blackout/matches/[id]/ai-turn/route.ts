@@ -15,9 +15,9 @@ export const maxDuration = 300;
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   try {
-    const match = requireMatch(id);
+    const match = await requireMatch(id);
     await advanceAiTurns(match);
-    return NextResponse.json(await fetchDto(match));
+    return NextResponse.json(await fetchDto(match, { reuseCachedState: true }));
   } catch (err) {
     const status = err instanceof BlackoutApiError ? err.status : 500;
     return NextResponse.json({ error: err instanceof Error ? err.message : String(err) }, { status });

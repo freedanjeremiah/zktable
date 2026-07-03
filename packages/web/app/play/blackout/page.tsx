@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
@@ -21,11 +21,24 @@ import { CITY_GRAPH } from "@/lib/board/city-graph";
 import { computeShadow, extractPhantomTickets } from "@/lib/board/shadow";
 import type { Ticket } from "@/lib/board/ticket-meta";
 import { DEFAULT_REVEAL_ROUNDS } from "@/lib/board/ticket-meta";
+import {
+  confirmPhantomMove,
+  discardPendingPhantomMove,
+  loadPhantomSecret,
+  phantomLegalMoves,
+  phantomRevealPayload,
+  preparePhantomStart,
+  provePhantomMove,
+} from "@/lib/phantom/phantom-client";
+import { signTransactionXdr } from "@/lib/wallet/freighter-adapter";
+import { useWallet } from "@/lib/wallet/wallet-context";
 import { cn } from "@/lib/utils";
 
 type Phase = "setup" | "creating" | "active" | "finished";
 
 type PendingPick = { node: number; tickets: Ticket[] };
+
+type OpenMatchSummary = { id: string; createdAt: number; refereeId: string; openSeats: string[]; status: string };
 
 async function readJson<T>(res: Response): Promise<T> {
   const json = (await res.json()) as T | { error: string };
@@ -37,6 +50,7 @@ async function readJson<T>(res: Response): Promise<T> {
 }
 
 export default function BlackoutBoardPage() {
+  const wallet = useWallet();
   const [phase, setPhase] = useState<Phase>("setup");
   const [matchId, setMatchId] = useState<string | null>(null);
   const [explorerUrl, setExplorerUrl] = useState<string>("");
@@ -47,6 +61,7 @@ export default function BlackoutBoardPage() {
   const [proofPhase, setProofPhase] = useState<ProofPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pendingPick, setPendingPick] = useState<PendingPick | null>(null);
+  const [openMatches, setOpenMatches] = useState<OpenMatchSummary[]>([]);
   const revealCountRef = useRef(0);
 
   const reset = useCallback(() => {
@@ -59,7 +74,100 @@ export default function BlackoutBoardPage() {
     setError(null);
     setPendingPick(null);
     revealCountRef.current = 0;
+    window.history.replaceState(null, "", "/play/blackout");
   }, []);
+
+  // Resume a match from the URL (M8.4): /play/blackout?match=<id> — a page
+  // reload (or a second browser) picks the match back up from the durable
+  // store instead of orphaning it.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("match");
+    if (!id) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/blackout/matches/${id}`);
+        const state = await readJson<MatchDto>(res);
+        if (cancelled) return;
+        setMatchId(id);
+        setExplorerUrl(state.explorerUrl);
+        setDto(state);
+        const human =
+          state.phantomHuman && loadPhantomSecret(id)
+            ? state.players.find((p) => p.role === "phantom")
+            : state.players.find((p) => p.role === "investigator" && !p.isAi);
+        setHumanPlayerId(human?.id ?? null);
+        setPhase(state.status === "finished" ? "finished" : "active");
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The open-match lobby (M8.4): visible while picking a game to start.
+  useEffect(() => {
+    if (phase !== "setup") return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/blackout/matches");
+        const json = await readJson<{ matches: OpenMatchSummary[] }>(res);
+        if (!cancelled) setOpenMatches(json.matches);
+      } catch {
+        // The lobby list is best-effort; creating a match works regardless.
+      }
+    };
+    void load();
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, 8000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [phase]);
+
+  const joinOpenMatch = useCallback(async (id: string) => {
+    setError(null);
+    try {
+      const res = await fetch(`/api/blackout/matches/${id}/join`, { method: "POST" });
+      const json = await readJson<{ playerId: string; state: MatchDto }>(res);
+      setMatchId(id);
+      setExplorerUrl(json.state.explorerUrl);
+      setDto(json.state);
+      setHumanPlayerId(json.playerId);
+      setPhase(json.state.status === "finished" ? "finished" : "active");
+      window.history.replaceState(null, "", `/play/blackout?match=${id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  // Light polling while someone else (AI or another browser) is on the
+  // clock, so this view keeps up without a manual refresh.
+  useEffect(() => {
+    if (phase !== "active" || !matchId || busyLabel) return;
+    if (dto?.currentPlayer && !dto.currentPlayer.isAi && dto.currentPlayer.id === humanPlayerId) return;
+    const timer = setInterval(() => {
+      // Backgrounded tabs must not hammer the server (each poll is a chain
+      // read); the next visible tick catches up.
+      if (document.visibilityState !== "visible") return;
+      void (async () => {
+        try {
+          const res = await fetch(`/api/blackout/matches/${matchId}`);
+          const state = await readJson<MatchDto>(res);
+          setDto(state);
+          if (state.status === "finished") setPhase("finished");
+        } catch {
+          // Transient poll failures are fine — the next tick retries.
+        }
+      })();
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [phase, matchId, busyLabel, dto, humanPlayerId]);
 
   /** Drive every consecutive AI turn (the API already loops server-side; this is a thin
    *  client-side safety net in case the server ever stops mid-AI-run). */
@@ -86,20 +194,66 @@ export default function BlackoutBoardPage() {
       setPhase("creating");
       setCreateStartedAt(Date.now());
       try {
+        const playPhantom = options.seat === "phantom";
+        const walletAddress = !playPhantom && wallet.status === "connected" ? wallet.address : undefined;
         const res = await fetch("/api/blackout/matches", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             investigators: options.investigators,
+            aiInvestigators: playPhantom ? options.investigators : undefined,
             model: options.model || undefined,
+            walletAddress: walletAddress ?? undefined,
+            phantomSeat: playPhantom ? "human" : undefined,
+            open: options.open || undefined,
           }),
         });
         const json = await readJson<{ matchId: string; explorerUrl: string; state: MatchDto }>(res);
         setMatchId(json.matchId);
         setExplorerUrl(json.explorerUrl);
         setDto(json.state);
-        const human = json.state.players.find((p) => p.role === "investigator" && !p.isAi);
+        window.history.replaceState(null, "", `/play/blackout?match=${json.matchId}`);
+        const human = playPhantom
+          ? json.state.players.find((p) => p.role === "phantom")
+          : json.state.players.find((p) => p.role === "investigator" && !p.isAi);
         setHumanPlayerId(human?.id ?? null);
+
+        // Human Phantom (M8.5): generate the secret start IN THIS BROWSER,
+        // send only its commitment, and the match starts with you on the
+        // clock — no AI pre-roll.
+        if (playPhantom && json.state.pendingPhantomStart) {
+          setBusyLabel("Committing your hidden start (secret stays in this browser)…");
+          const { commitmentHex } = await preparePhantomStart(json.matchId);
+          const startRes = await fetch(`/api/blackout/matches/${json.matchId}/phantom-start`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ commitmentHex }),
+          });
+          const started = await readJson<MatchDto>(startRes);
+          setDto(started);
+          setBusyLabel(null);
+          setPhase("active");
+          return;
+        }
+
+        // Wallet-bound seat: the referee demands the wallet's signature on
+        // its own set_public_start before the match can start.
+        let state = json.state;
+        if (state.pendingStart) {
+          setBusyLabel("Sign your starting position in Freighter…");
+          const signedXdr = await signTransactionXdr(state.pendingStart.xdr, {
+            address: walletAddress ?? undefined,
+          });
+          const startRes = await fetch(`/api/blackout/matches/${json.matchId}/start-signed`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ signedXdr }),
+          });
+          state = await readJson<MatchDto>(startRes);
+          setDto(state);
+          setBusyLabel(null);
+        }
+
         setPhase("active");
         // The Phantom always opens — advance it immediately so the board
         // never sits idle waiting on an AI seat.
@@ -109,7 +263,7 @@ export default function BlackoutBoardPage() {
         setPhase("setup");
       }
     },
-    [runAiTurns],
+    [runAiTurns, wallet.status, wallet.address],
   );
 
   const submitMove = useCallback(
@@ -119,11 +273,81 @@ export default function BlackoutBoardPage() {
       setPendingPick(null);
       setBusyLabel("Submitting your move…");
       try {
-        const res = await fetch(`/api/blackout/matches/${matchId}/moves`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ player: dto.currentPlayer.index, node, ticket }),
-        });
+        const player = dto.currentPlayer.index;
+        let res: Response;
+        if (dto.phantomHuman && dto.currentPlayer.role === "phantom") {
+          // Prove the hidden move IN THE BROWSER (M8.5): the position and
+          // salts never leave this machine — only {c_new, ticket, proof}.
+          const preRound = dto.round;
+          setBusyLabel("Proving your move in this browser — typically 10–30 s…");
+          const payload = await provePhantomMove(matchId, { to: node, ticket });
+          setBusyLabel("Submitting your proof on-chain…");
+          let next: MatchDto;
+          try {
+            res = await fetch(`/api/blackout/matches/${matchId}/phantom-move`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            next = await readJson<MatchDto>(res);
+          } catch (err) {
+            // The move never landed: drop the staged (pos, salt) so the
+            // CURRENT salt (matching the on-chain commitment) stays
+            // authoritative for the retry.
+            discardPendingPhantomMove(matchId);
+            throw err;
+          }
+          // Landed on-chain — promote the staged secret.
+          confirmPhantomMove(matchId);
+          const revealRounds = next.revealRounds.length > 0 ? next.revealRounds : DEFAULT_REVEAL_ROUNDS;
+          if (revealRounds.includes(preRound)) {
+            setBusyLabel("Reveal round — publishing your position…");
+            const revealRes = await fetch(`/api/blackout/matches/${matchId}/phantom-reveal`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(phantomRevealPayload(matchId)),
+            });
+            next = await readJson<MatchDto>(revealRes);
+          }
+          setDto(next);
+          setProofPhase(next.proofStatus?.ok === false ? "error" : "verified");
+          setBusyLabel(null);
+          if (next.status === "finished") {
+            setPhase("finished");
+            return;
+          }
+          // Same client-side safety net the other paths get: if the server
+          // stopped mid-AI-run, kick it (safe — the server holds AI turns
+          // while a reveal is still pending).
+          if (next.currentPlayer?.isAi) {
+            await runAiTurns(matchId);
+          }
+          return;
+        }
+        if (dto.walletSeat && dto.walletSeat.player === player) {
+          // Wallet-bound seat: prepare -> Freighter sign -> submit. The
+          // referee's require_auth() rejects anything the wallet didn't sign.
+          const prepRes = await fetch(`/api/blackout/matches/${matchId}/moves/prepare`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ player, node, ticket }),
+          });
+          const { xdr } = await readJson<{ xdr: string }>(prepRes);
+          setBusyLabel("Sign your move in Freighter…");
+          const signedXdr = await signTransactionXdr(xdr, { address: dto.walletSeat.address });
+          setBusyLabel("Submitting your signed move…");
+          res = await fetch(`/api/blackout/matches/${matchId}/moves/submit`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ player, node, ticket, signedXdr }),
+          });
+        } else {
+          res = await fetch(`/api/blackout/matches/${matchId}/moves`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ player, node, ticket }),
+          });
+        }
         setProofPhase("proving");
         const next = await readJson<MatchDto>(res);
         setDto(next);
@@ -153,6 +377,33 @@ export default function BlackoutBoardPage() {
   }, [submitMove]);
 
   const investigatorCount = dto ? dto.players.filter((p) => p.role === "investigator").length : 0;
+
+  // Human Phantom (M8.5): this browser's own secret drives the map — the
+  // position marker and legal moves exist ONLY client-side.
+  const phantomSecretPos = useMemo(() => {
+    if (!dto?.phantomHuman || humanPlayerId !== "phantom" || !matchId) return null;
+    return loadPhantomSecret(matchId)?.pos ?? null;
+  }, [dto, humanPlayerId, matchId]);
+
+  const displayPlayers = useMemo(() => {
+    if (!dto) return [];
+    if (phantomSecretPos === null) return dto.players;
+    return dto.players.map((p) => (p.role === "phantom" ? { ...p, node: phantomSecretPos } : p));
+  }, [dto, phantomSecretPos]);
+
+  const mapLegalMoves = useMemo(() => {
+    if (!dto?.currentPlayer) return [];
+    if (dto.phantomHuman && dto.currentPlayer.role === "phantom" && humanPlayerId === "phantom") {
+      if (phantomSecretPos === null) return [];
+      const phantom = dto.players.find((p) => p.role === "phantom");
+      return phantomLegalMoves(phantomSecretPos, phantom?.tickets ?? { taxi: 0, bus: 0, rail: 0 }).map((m) => ({
+        type: "move",
+        to: m.to,
+        ticket: m.ticket,
+      }));
+    }
+    return dto.currentPlayer.legalMoves ?? [];
+  }, [dto, humanPlayerId, phantomSecretPos]);
   const shadow = useMemo(() => {
     if (!dto) return new Set<number>();
     const phantomTickets = extractPhantomTickets(dto.ticketFeed, investigatorCount);
@@ -194,8 +445,37 @@ export default function BlackoutBoardPage() {
       ) : null}
 
       {phase === "setup" ? (
-        <div className="mt-8 max-w-xl">
+        <div className="mt-8 flex max-w-xl flex-col gap-6">
           <SetupPanel onStart={handleStart} />
+          {openMatches.length > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Open matches</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-2">
+                {openMatches.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-border px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate font-mono text-xs text-fg">{m.id}</div>
+                      <div className="text-xs text-fg-subtle">
+                        seat{m.openSeats.length === 1 ? "" : "s"} {m.openSeats.join(", ")} · {m.status}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="accent"
+                      className="cursor-pointer select-none"
+                      onClick={() => void joinOpenMatch(m.id)}
+                    >
+                      Join
+                    </Badge>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
       ) : null}
 
@@ -214,10 +494,10 @@ export default function BlackoutBoardPage() {
               </div>
               <div className={cn("relative aspect-square bg-bg-panel p-4", !isHumanTurn && "cursor-default")}>
                 <TransitMap
-                  players={dto.players}
+                  players={displayPlayers}
                   humanPlayerId={humanPlayerId}
                   shadow={shadow}
-                  legalMoves={isHumanTurn ? dto.currentPlayer?.legalMoves ?? [] : []}
+                  legalMoves={isHumanTurn ? mapLegalMoves : []}
                   revealSpotlight={lastReveal}
                   onSelectNode={handleSelectNode}
                   disabled={!isHumanTurn}

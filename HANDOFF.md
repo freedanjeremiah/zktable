@@ -1,11 +1,15 @@
 # zkTable — Engineering Handoff
 
-**Status:** Milestones M0–M7 of `PRD.md` are implemented and verified on **live
-Stellar testnet**. Nothing is mocked — every game runs a full match on-chain with
-real UltraHonk proofs. Full test suite green: **234 TypeScript tests + 84 Rust
-tests**, plus every circuit's `nargo test`.
+**Status:** Milestones M0–M8 are implemented and verified on **live Stellar
+testnet** (M8 = all five post-M7 hardening workstreams: per-seat
+`require_auth`, engine turn-skip elimination + N-player games, the
+`valid_shuffle` provably-fair deal, the durable match store + lobby, and
+browser proving for a human Phantom). Nothing is mocked — every game runs a
+full match on-chain with real UltraHonk proofs. Full test suite green:
+**257 TypeScript tests + 92 Rust tests**, plus every circuit's `nargo test`.
 
-Branch: `zktable-build` (all work). Base: the original `PRD.md` commit on `main`.
+Branches: `zktable-build` (M0–M7), `zktable-m8` (M8). Specs for all five
+post-M7 workstreams: `docs/superpowers/specs/2026-07-03-*.md`.
 
 ---
 
@@ -106,29 +110,32 @@ LIARS_TESTNET=1     pnpm --filter @zktable/liars-dice play
 
 ## Known limitations / honest caveats (see docs/limitations.md)
 
-- **`deck` v1 is a semi-honest committed deal** (PRD §7.2) — not full
-  mental-poker/coSNARK security. The `card_membership` prove-hold-or-bluff proof
-  IS load-bearing; the shuffle/deal trust is the documented simplification.
-- **Referees have no `require_auth()` yet.** The demo is single-wallet /
-  backend-orchestrated; the ZK proofs + on-chain referee are the trust anchor.
-  Per-caller auth is the multiplayer hardening step (tracked). The AI Phantom
-  proves server-side because the secret is its OWN — legitimate; browser proving
-  (bb.js) is the path for a human playing the hidden role, deferred.
-- **In-memory, single-process match store** in the web backend (demo scope).
-- **Liar's Dice / Coup-lite on-chain demos are 2-player** (contracts support more;
-  the core engine lacks an eliminated-player turn-skip hook).
+- **`deck` v1.5: the deal is provably fair** (seed-forced `valid_shuffle`,
+  M8.3) — but the dealer still SEES the cards (mental-poker/MPC is deck v2).
+- **Per-seat `require_auth()` is live** (M8.1); `join`/`start` stay
+  deliberately permissionless (lobby access is API-gated).
+- **Durable match store** ships behind `REDIS_URL` (M8.4); without it the
+  default is still the in-process demo map, and one match = one process.
+- **Human-Phantom browser proving is live** (M8.5); the secret lives in
+  `localStorage`, and the liars-dice CONTRACT still locks 2 players.
 - **Map is 100 nodes** (classic 199-node London topology is a stretch goal).
+- **No proof anti-replay** (limitations §7) — unchanged, demo-acceptable.
 
 ---
 
 ## Suggested next steps
 
-1. Referee `require_auth()` + Freighter-signed investigator moves → fully
-   trustless multiplayer.
-2. Browser proving via `bb.js` so a human can play the hidden role (Phantom).
-3. `valid_shuffle` circuit to remove the deck's semi-honest-deal assumption.
-4. Durable match store (Redis/DB) + matchmaking for the web app.
-5. Multi-round elimination for Liar's Dice / Coup-lite (needs a core engine
-   turn-skip hook for eliminated players).
-
-Progress ledger with per-task commit hashes: `.superpowers/sdd/progress.md`.
+1. ~~Referee `require_auth()` + Freighter-signed investigator moves~~ —
+   **done (M8.1)**, testnet-verified multi-identity runs for all three games.
+2. ~~Browser proving via `bb.js`~~ — **done (M8.5)**: `@zktable/prover-web`
+   + human-Phantom web flow; CLI-parity regression-tested.
+3. ~~`valid_shuffle` circuit~~ — **done (M8.3)**: seed-forced shuffle +
+   position-assigned hands; the dealer can no longer choose the deal (ADR 009).
+4. ~~Durable match store + matchmaking~~ — **done (M8.4)**: MatchRecord/
+   MatchStore split, Redis backend, session-bound seats, lobby, URL resume.
+5. ~~Multi-round elimination / engine turn-skip hook~~ — **done (M8.2)**:
+   `turn.eliminated` in `@zktable/core`; Coup-lite 2–4p (3p on testnet),
+   Liar's Dice 2–6p locally (the liars CONTRACT still locks 2p — see
+   limitations §5 for the remaining contract workstream).
+6. Liar's Dice referee multi-round protocol (per-round `dice_valid`
+   re-rolls for survivors) to lift the contract's 2-player lock.

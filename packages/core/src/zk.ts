@@ -66,11 +66,11 @@ export const zk = {
     deal(n: number): ZkMarker {
       return { __zk: 'deck.deal', n }
     },
-    /** Binds a shuffle to "prove the permutation is a valid bijection" (`valid_shuffle`). Inert marker; not implemented by any v1 module — see §7.2's honest-simplification note (M6.3 report). */
+    /** Binds a shuffle to "prove the deck is the canonical set in the seed-forced order" (`valid_shuffle`, REAL on-chain as of M8.3 — seed commit-reveal + position-assigned hands in the coup-referee; see ADR 009). The marker itself stays declarative in the local engine, like every `zk.*` marker. */
     shuffle(): ZkMarker {
       return { __zk: 'deck.shuffle' }
     },
-    /** Binds a move to "prove a claimed card is held (or the challenge reveals a bluff)" (`card_membership`) — the M6.3 Coup-lite showcase's load-bearing binding. Inert marker; wiring lands in M2+. */
+    /** Binds a move to "prove a claimed card is held (or the challenge reveals a bluff)" (`card_membership`) — REAL on-chain since M6.3 (Coup-lite's load-bearing `prove_hold`). The marker itself stays declarative in the local engine. */
     proveHoldOrBluff(): ZkMarker {
       return { __zk: 'deck.proveHoldOrBluff' }
     },

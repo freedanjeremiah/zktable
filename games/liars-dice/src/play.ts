@@ -9,7 +9,8 @@
 // Usage:
 //   LIARS_TESTNET=1 pnpm --filter @zktable/liars-dice play
 //
-// Env overrides: LIARS_NETWORK, LIARS_SOURCE, LIARS_SEED.
+// Env overrides: LIARS_NETWORK, LIARS_SOURCE, LIARS_SEED, LIARS_MULTISIG
+// (=1 signs each seat with its own funded identity — see identities.ts).
 
 import { playLiarsDice } from './runner.js'
 
@@ -27,6 +28,7 @@ async function main(): Promise<void> {
     network: process.env.LIARS_NETWORK ?? 'testnet',
     source: process.env.LIARS_SOURCE ?? 'alice',
     seed: process.env.LIARS_SEED ?? `liars-dice-testnet-${Date.now()}`,
+    multiSeat: process.env.LIARS_MULTISIG === '1',
     log: (line) => console.log(line),
   })
 

@@ -24,6 +24,7 @@ import {
   toolEnv,
 } from './paths.js'
 import { CliRefereeClient, toBe32Hex } from './referee-client.js'
+import { ensureIdentities, seatIdentityNames } from './identities.js'
 import type { ChainGameState } from './referee-client.js'
 import { investigatorMove, phantomMove } from './strategy.js'
 
@@ -112,6 +113,13 @@ export type PlayBlackoutOptions = {
    */
   scriptedCapture?: { round: number; investigatorIndex: number }
   log?: (line: string) => void
+  /**
+   * When true, provisions one funded testnet identity per seat
+   * (`<source>-seat<i>`) and signs each seat's moves with its own key,
+   * demonstrating genuine multi-wallet play against require_auth().
+   * Default: every seat is owned and signed by `source`.
+   */
+  multiSeat?: boolean
 }
 
 export type Transcript = {
@@ -227,7 +235,17 @@ export async function playBlackout(opts: PlayBlackoutOptions = {}): Promise<Tran
 
   const graph = new BoardGraph(cityGraphData)
   const prover = new BoardProver()
-  const client = new CliRefereeClient({ network: opts.network, source: opts.source })
+
+  const sourceName = opts.source ?? 'alice'
+  const seatNames = seatIdentityNames(sourceName, roster.length, opts.multiSeat ?? false)
+  log(`ensuring seat identities exist + are funded: ${[...new Set(seatNames)].join(', ')}…`)
+  const addressByName = await ensureIdentities(seatNames)
+
+  const client = new CliRefereeClient({
+    network: opts.network,
+    source: sourceName,
+    sourceForSeat: Object.fromEntries(seatNames.map((n, i) => [i, n])),
+  })
 
   log('computing graph root…')
   const graphRootHex = await graph.root()
@@ -248,14 +266,14 @@ export async function playBlackout(opts: PlayBlackoutOptions = {}): Promise<Tran
   })
   log(`  referee: ${refereeContractId}`)
 
-  const source = opts.source ?? 'alice'
-  const addr = await addressOf(source)
-
+  // Seat i is joined with its own identity's address — every subsequent
+  // per-seat call must then be signed by that identity (require_auth).
   const playerIndex = new Map<PlayerId, number>()
-  for (const p of roster) {
-    log(`joining ${p.id} (${p.role})…`)
+  for (let i = 0; i < roster.length; i++) {
+    const p = roster[i]!
+    log(`joining ${p.id} (${p.role}) as ${seatNames[i]}…`)
     const idx = await client.join(refereeContractId, {
-      addr,
+      addr: addressByName[seatNames[i]!]!,
       role: p.role,
       ticketTaxi: tickets.taxi,
       ticketBus: tickets.bus,

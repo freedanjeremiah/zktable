@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { DICE_PER_PLAYER, N_PLAYERS, SIDES, liarsDice } from './liars-dice.js'
+import { DICE_PER_PLAYER, MAX_PLAYERS, MIN_PLAYERS, N_PLAYERS, SIDES, liarsDice } from './liars-dice.js'
 import { buildRoster, createLocalMatch, playLocalMatch, stepLocalMatch } from './runner.js'
 import type { BidEntry } from './liars-dice.js'
 
 describe('liarsDice defineGame shape', () => {
-  it('compiles via defineGame with the v1 2-player scope', () => {
+  it('compiles via defineGame with the M8.2 2-6 player local range', () => {
     expect(liarsDice.def.name).toBe('liars-dice')
-    expect(liarsDice.def.players.min).toBe(N_PLAYERS)
-    expect(liarsDice.def.players.max).toBe(N_PLAYERS)
-    expect(N_PLAYERS).toBe(2)
+    expect(liarsDice.def.players.min).toBe(MIN_PLAYERS)
+    expect(liarsDice.def.players.max).toBe(MAX_PLAYERS)
+    expect(MIN_PLAYERS).toBe(2)
+    expect(MAX_PLAYERS).toBe(6)
+    expect(N_PLAYERS).toBe(2) // default demo seat count; on-chain v1 scope
     expect(DICE_PER_PLAYER).toBe(5)
     expect(SIDES).toBe(6)
   })
@@ -29,12 +31,16 @@ describe('a full local seeded game', () => {
     const winner = match.state.outcome!.winner
     expect(roster.map((p) => p.id)).toContain(winner)
 
-    // Exactly one player is eliminated, the other is the declared winner.
-    const eliminated = match.state.public.eliminated as string
-    expect(roster.map((p) => p.id)).toContain(eliminated)
-    expect(eliminated).not.toBe(winner)
+    // Exactly one player runs out of dice; the other is the declared winner.
+    const eliminatedIds = match.state.public.eliminatedIds as string[]
+    expect(eliminatedIds).toHaveLength(1)
+    expect(roster.map((p) => p.id)).toContain(eliminatedIds[0])
+    expect(eliminatedIds[0]).not.toBe(winner)
 
-    // The game always ends on a `challenge` move (v1: single-round elimination).
+    // Multi-round die loss (default): more than one challenge round happens.
+    expect(match.state.public.roundNumber as number).toBeGreaterThan(1)
+
+    // The game always ends on a `challenge` move (the only move that can end it).
     expect(steps.at(-1)!.move.type).toBe('challenge')
   })
 
@@ -88,28 +94,29 @@ describe('challenge resolution with known dice', () => {
 
   it('the CHALLENGER loses when the true count meets or exceeds the bid', () => {
     // p1: [5,5,3,1,2] (two 5s); p2: [5,4,4,6,6] (one 5) -> three 5s total.
+    // lossMode 'seat' mirrors the v1 on-chain referee: one challenge decides.
     const diceByPlayer = { [p1]: [5, 5, 3, 1, 2], [p2]: [5, 4, 4, 6, 6] }
-    const match = createLocalMatch(roster, { diceByPlayer }, 'known-dice-seed-1')
+    const match = createLocalMatch(roster, { diceByPlayer, lossMode: 'seat' }, 'known-dice-seed-1')
 
     match.submit(p1, { type: 'bid', quantity: 3, face: 5 }) // true: exactly 3 fives
     match.submit(p2, { type: 'challenge' })
 
     expect(match.state.status).toBe('finished')
     expect(match.state.public.resolvedCount).toBe(3)
-    expect(match.state.public.eliminated).toBe(p2) // challenger loses
+    expect(match.state.public.eliminatedIds).toEqual([p2]) // challenger loses
     expect(match.state.outcome).toEqual({ winner: p1 })
   })
 
   it('the BIDDER loses when the true count is below the bid', () => {
     const diceByPlayer = { [p1]: [5, 5, 3, 1, 2], [p2]: [5, 4, 4, 6, 6] }
-    const match = createLocalMatch(roster, { diceByPlayer }, 'known-dice-seed-2')
+    const match = createLocalMatch(roster, { diceByPlayer, lossMode: 'seat' }, 'known-dice-seed-2')
 
     match.submit(p1, { type: 'bid', quantity: 4, face: 5 }) // false: only 3 fives exist
     match.submit(p2, { type: 'challenge' })
 
     expect(match.state.status).toBe('finished')
     expect(match.state.public.resolvedCount).toBe(3)
-    expect(match.state.public.eliminated).toBe(p1) // bidder loses
+    expect(match.state.public.eliminatedIds).toEqual([p1]) // bidder loses
     expect(match.state.outcome).toEqual({ winner: p2 })
   })
 })
@@ -123,5 +130,43 @@ describe('stepLocalMatch', () => {
     if (match.state.status === 'active') {
       expect(match.state.turn.current).not.toBe(first)
     }
+  })
+})
+
+describe('multi-round die loss + elimination (M8.2)', () => {
+  const roster = buildRoster(3)
+  const [p1, p2, p3] = roster.map((p) => p.id) as [string, string, string]
+
+  it('a lost challenge costs one die and starts a fresh round', () => {
+    // p1 truthfully bids three 5s; p2 challenges and loses ONE die.
+    const diceByPlayer = { [p1]: [5, 5, 3, 1, 2], [p2]: [5, 4, 4, 6, 6], [p3]: [1, 1, 2, 2, 3] }
+    const match = createLocalMatch(roster, { diceByPlayer }, '3p-die-loss-seed')
+
+    match.submit(p1, { type: 'bid', quantity: 3, face: 5 }) // true: 3 fives across 15 dice
+    match.submit(p2, { type: 'challenge' })
+
+    expect(match.state.status).toBe('active')
+    const counts = match.state.public.diceCountByPlayer as Record<string, number>
+    expect(counts[p2]).toBe(4)
+    expect(counts[p1]).toBe(5)
+    expect(match.state.public.roundNumber).toBe(2)
+    expect(match.state.public.currentBid).toBeNull()
+    // Fresh rolls: p2 now has 4 dice, others 5.
+    const rolls = match.state.public.diceByPlayer as Record<string, number[]>
+    expect(rolls[p2]).toHaveLength(4)
+    expect(rolls[p1]).toHaveLength(5)
+    expect(rolls[p3]).toHaveLength(5)
+  })
+
+  it('a full 3-player game eliminates players one die at a time until one remains', () => {
+    const { match } = playLocalMatch(roster, {}, '3p-tournament-seed')
+    expect(match.state.status).toBe('finished')
+    const winner = match.state.outcome!.winner as string
+    const eliminatedIds = match.state.public.eliminatedIds as string[]
+    expect(eliminatedIds).toHaveLength(2)
+    expect(eliminatedIds).not.toContain(winner)
+    const counts = match.state.public.diceCountByPlayer as Record<string, number>
+    for (const id of eliminatedIds) expect(counts[id]).toBe(0)
+    expect(counts[winner]).toBeGreaterThan(0)
   })
 })

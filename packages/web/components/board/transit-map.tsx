@@ -168,6 +168,7 @@ export function TransitMap({
             return (
               <g key={`legal-${node}`}>
                 <circle
+                  data-testid={`legal-node-${node}`}
                   cx={p[0]}
                   cy={p[1]}
                   r={0.32}

@@ -249,3 +249,119 @@ covering the load-bearing design decisions), `docs/tutorial-build-a-game.md`
 `docs/limitations.md` (the itemized honest-limitations list). No package or
 contract code changed in this milestone — all 234 TS + 84 Rust tests remain
 green, confirmed by re-running the full suite before writing this entry.
+
+## M8 — Trustless multiplayer hardening (auth, elimination, provable shuffle) ✅
+
+**Done:** 2026-07-03. Three of the five post-M7 workstreams from
+`HANDOFF.md`, each spec'd in `docs/superpowers/specs/` before
+implementation. Test suite grew to **249 TS + 92 Rust tests**, all green.
+
+### M8.1 — Per-seat `require_auth()` across all three referees
+
+Every per-seat in-game entry point now requires the seat owner's Stellar
+`Address` authorization (fixed at `join`/construction); `join`/`start` stay
+deliberately permissionless (spec'd rationale). Clients gained per-seat
+`--source` signing (`sourceForSeat`), runners a `*_MULTISIG=1` mode that
+provisions one funded identity per seat, and the web app a Freighter
+prepare/sign/submit flow for investigator moves (`--build-only` →
+`tx simulate` → browser signature → `tx send`).
+
+| Evidence (all live testnet, multi-identity: `alice` + `alice-seat1/2`) | Value |
+|---|---|
+| Blackout referee (full 3-round game, per-seat signing, capture at reveal) | `CD2LDMU4MZR72QXBKNO6WEESHJ6WPBXE5EW6DRK2W25V7I7K5Z6QBI4P` |
+| Wrong-signer rejection (seat owned by `alice-seat1`, `alice` attempts `set_public_start` → auth demand for `GC5S2UAC…`; owner-signed tx succeeds) | referee `CDFZUQQJAGTA7POXZULQUPZBQ6F6I2LTFCRUIOTMZFDEFC66CWJVFZTW`, tx `99b93efe0e997b8ce89a3e589b94467e127a756e88d4088be1b816fc57929a87` |
+| Liar's Dice (full game, per-seat signing) | `CB374UGDL4ZU5KMGMR5E2BBA7YD5F6IGB4OG44LWBA54WAERSMJHQFWL` |
+
+### M8.2 — Engine `turn.eliminated` hook + N-player games
+
+`@zktable/core` gained a declarative elimination predicate: the engine
+skips eliminated seats when advancing the turn (round numbering stable),
+returns them no legal moves, and throws if the field drops to one seat
+while `end()` still returns null. Coup-lite's `defineGame` now spans the
+referee's native 2–4 player range; Liar's Dice plays 2–6 locally with
+multi-round die-loss elimination (the on-chain runner passes
+`lossMode: 'seat'` to stay in lockstep with the still-2-player contract).
+
+| Evidence | Value |
+|---|---|
+| 3-player Coup-lite on testnet (3 seats, 3 identities, 4 real `card_membership` proofs verified on-chain, survivor-of-3 outcome `player3`) | referee `CC4PQKMDREW7UTPB6EA65JQQIHOJZXLCT5NOYUOQNXBVZX27FM7IN6TE` |
+
+### M8.3 — `valid_shuffle`: the deal is now provably fair
+
+New Noir circuit (`packages/circuits/valid_shuffle`) proves the whole
+15-card committed deck (3 copies × 5 characters, real Coup) is the
+canonical set permuted by the UNIQUE order forced by an on-chain
+commit-reveal seed (sort keys `Poseidon2(seed, i)`, low-64-bit truncation,
+byte-matched by `zktable-graph shuffle-witness`). The coup-referee replaced
+its trusted `deal` with `SeedCommit → SeedReveal → Shuffle` phases: the
+shuffle proof verifies against a second verifier instance with
+public_inputs rebuilt from the referee's OWN stored seed, then hands are
+assigned by fixed deck position (player p = leaves 2p, 2p+1) — the dealer
+cannot choose the deal, only learn it (see ADR 009; limitations §1 for
+what deliberately remains). 16 native contract tests with real fixture
+proofs, including tampered-proof, wrong-seed-proof, and seed-bias
+rejections.
+
+| Evidence (live testnet, full match) | Value |
+|---|---|
+| Coup referee (seed commit-reveal on-chain → `valid_shuffle` proof verified cross-contract → position-assigned hands → real `card_membership` challenge proofs → outcome) | `CC6XWHXGKDZNB5TOVJ4CTNP7XCPQRAJ42FZRNNGGWDVGBP6R2IKBDFOV` |
+| `card_membership` verifier / `valid_shuffle` verifier | `CAKAZZWD4JAHM2INJX5HYM2E3DYV72JDAHBCQJRS6HDQ2ODB46LNOZXO` / `CCUS3PAQBOVT2AVI637PTTLQQWSVRPWXH4OHNCPNLW5PWJ3VYZ7EE5Q2` |
+| On-chain joint seed for that match | `0x23ab9cec95cc5ec7d8407a3f8dec8815db6707bc1511b7b81decf242e60e142c` |
+
+### M8.4 — Durable match store + lobby
+
+Matches persist as serializable `MatchRecord`s behind a small async
+`MatchStore` interface: memory (default demo mode) or Redis via
+`REDIS_URL` (`zktable:match:{id}` JSON, 24 h TTL, open-match index set).
+Live runtimes are rehydrated by replaying the match's own event log
+through a fresh local engine mirror — verified by a round-trip test that
+reproduces the mirror state, the Phantom's secret, and the seat bindings
+exactly. Human seats bind to an httpOnly session cookie (closing the
+"anyone with the matchId can move any seat" API hole); matches resume
+from `/play/blackout?match=<id>` with light polling; an open-match lobby
+ships as `GET /api/blackout/matches` + `POST .../[id]/join`.
+
+### M8.5 — Browser proving: a human plays the Phantom
+
+New `@zktable/prover-web` package: Poseidon2 commitments straight from
+Barretenberg's own WASM (bb.js), a TS port of `zktable-graph`'s edge-tree
+builder, ACVM witness solving via noir_js, UltraHonk proving with the
+pinned keccak oracle (noir_js `1.0.0-beta.9`, bb.js `0.87.0` — matching
+the CLI pins). The make-or-break parity gate passed and is kept as a
+regression suite: `commit(5,12345)` matches the `zktable-graph` golden
+vector, the TS tree reproduces the CLI city-map root byte-for-byte, and a
+browser-generated proof (14592 B, 128 B public inputs, ~1.2 s in Node
+WASM) **verifies with the native `bb` CLI against the CLI-generated VK**
+— the same bytes the on-chain verifier is deployed with.
+
+The web app seats a human Phantom (`phantomSeat: 'human'`): the browser
+generates the start position + salts, posts only the commitment, proves
+every hidden move locally, and publishes `(node, salt)` only at reveal
+checkpoints; the server keeps no phantom secret and no engine mirror for
+these matches (investigator legality derives from the public graph —
+`legal-moves.ts`). Reveal ordering is preserved (the phantom-move route
+defers AI turns on reveal rounds until the reveal lands). COOP/COEP
+headers enable multithreaded WASM proving where available.
+
+### M8 review pass (post-implementation)
+
+A recall-biased multi-agent review of the whole M8 branch (8 finder angles
++ 2 spec-gap audits, every candidate verified against the code) surfaced
+and fixed, before any of it shipped beyond testnet demos: a session-token
+regression that 403'd the Freighter flow at `moves/prepare`; the browser
+Phantom rotating its localStorage secret before server confirmation
+(bricking risk on a failed submit — now staged + promoted only on
+success); `advanceAiTurns` batching persistence past on-chain mutations
+(now saved per landed move, including error paths); AI investigators in
+human-Phantom matches reading a frozen round-0 mirror (now a faithful
+chain-derived view); `/ai-turn` violating reveal-before-investigators
+ordering (now held while a reveal is due); lost-update races on the match
+store (revision CAS in both backends, 409 on conflict); a memoized-forever
+failed Redis connect (503 + retry); plus payload validation on the phantom
+routes, a shared adjacency rule for shadow/legality/phantom-options,
+lobby UI (open-to-lobby toggle + join list), route-handler tests, and —
+closing the loop on this section's own claims — the parity suite now
+includes the bb.js-VK-equals-CLI-VK byte check, a native `bb verify` of a
+browser proof, and byte-equality of public inputs against `zktable-graph
+witness`. The interactive human-Phantom browser match against testnet
+remains a pending manual acceptance run (nothing above claims otherwise).

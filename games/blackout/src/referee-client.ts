@@ -80,6 +80,13 @@ export type CliRefereeClientOptions = {
   /** Bounded retry for transient (non-contract) CLI/network failures. */
   retries?: number
   retryDelayMs?: number
+  /**
+   * CLI identity name per seat index. When a per-seat mutating call is made
+   * for seat i, the transaction is signed by `sourceForSeat[i]` (falling
+   * back to `source`) so the referee's `require_auth()` sees the seat
+   * owner's signature. Deploys/`join`/`start` always use `source`.
+   */
+  sourceForSeat?: Record<number, string>
 }
 
 /** Strips a leading `0x` from a hex string (Bytes/BytesN CLI args are hex WITHOUT `0x`). */
@@ -101,6 +108,7 @@ export class CliRefereeClient {
   private readonly stellarBin: string
   private readonly retries: number
   private readonly retryDelayMs: number
+  private readonly sourceForSeat: Record<number, string>
 
   constructor(opts: CliRefereeClientOptions = {}) {
     this.network = opts.network ?? 'testnet'
@@ -108,6 +116,7 @@ export class CliRefereeClient {
     this.stellarBin = opts.stellarBin ?? DEFAULT_STELLAR_BIN
     this.retries = opts.retries ?? 3
     this.retryDelayMs = opts.retryDelayMs ?? 3_000
+    this.sourceForSeat = opts.sourceForSeat ?? {}
   }
 
   /** `stellar contract deploy` for the `move_along` verifier. Returns the deployed contract id. */
@@ -155,17 +164,19 @@ export class CliRefereeClient {
   }
 
   async setHiddenStart(refereeId: string, player: number, commitmentHex: string): Promise<void> {
-    await this.invoke(refereeId, [
-      'set_hidden_start',
-      '--player',
-      String(player),
-      '--commitment',
-      stripHexPrefix(commitmentHex),
-    ])
+    await this.invoke(
+      refereeId,
+      ['set_hidden_start', '--player', String(player), '--commitment', stripHexPrefix(commitmentHex)],
+      player,
+    )
   }
 
   async setPublicStart(refereeId: string, player: number, node: number): Promise<void> {
-    await this.invoke(refereeId, ['set_public_start', '--player', String(player), '--node', String(node)])
+    await this.invoke(
+      refereeId,
+      ['set_public_start', '--player', String(player), '--node', String(node)],
+      player,
+    )
   }
 
   async start(refereeId: string): Promise<void> {
@@ -176,41 +187,53 @@ export class CliRefereeClient {
     refereeId: string,
     opts: { player: number; cNewHex: string; ticket: number; proofHex: string },
   ): Promise<void> {
-    await this.invoke(refereeId, [
-      'submit_hidden_move',
-      '--player',
-      String(opts.player),
-      '--c-new',
-      stripHexPrefix(opts.cNewHex),
-      '--ticket',
-      String(opts.ticket),
-      '--proof',
-      stripHexPrefix(opts.proofHex),
-    ])
+    await this.invoke(
+      refereeId,
+      [
+        'submit_hidden_move',
+        '--player',
+        String(opts.player),
+        '--c-new',
+        stripHexPrefix(opts.cNewHex),
+        '--ticket',
+        String(opts.ticket),
+        '--proof',
+        stripHexPrefix(opts.proofHex),
+      ],
+      opts.player,
+    )
   }
 
   async submitPublicMove(refereeId: string, opts: { player: number; node: number; ticket: number }): Promise<void> {
-    await this.invoke(refereeId, [
-      'submit_public_move',
-      '--player',
-      String(opts.player),
-      '--node',
-      String(opts.node),
-      '--ticket',
-      String(opts.ticket),
-    ])
+    await this.invoke(
+      refereeId,
+      [
+        'submit_public_move',
+        '--player',
+        String(opts.player),
+        '--node',
+        String(opts.node),
+        '--ticket',
+        String(opts.ticket),
+      ],
+      opts.player,
+    )
   }
 
   async reveal(refereeId: string, opts: { player: number; node: number; saltHex: string }): Promise<void> {
-    await this.invoke(refereeId, [
-      'reveal',
-      '--player',
-      String(opts.player),
-      '--node',
-      String(opts.node),
-      '--salt',
-      stripHexPrefix(opts.saltHex),
-    ])
+    await this.invoke(
+      refereeId,
+      [
+        'reveal',
+        '--player',
+        String(opts.player),
+        '--node',
+        String(opts.node),
+        '--salt',
+        stripHexPrefix(opts.saltHex),
+      ],
+      opts.player,
+    )
   }
 
   async gameState(refereeId: string): Promise<ChainGameState> {
@@ -236,15 +259,20 @@ export class CliRefereeClient {
     return this.execWithRetry(args)
   }
 
-  /** Mutating call (`--send=yes`). */
-  private async invoke(contractId: string, methodArgs: string[]): Promise<string> {
+  /**
+   * Mutating call (`--send=yes`). When `seat` is given, signs with that
+   * seat's identity (`sourceForSeat[seat]`, falling back to `source`) so
+   * the referee's per-seat `require_auth()` is satisfied.
+   */
+  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<string> {
+    const source = seat !== undefined ? (this.sourceForSeat[seat] ?? this.source) : this.source
     const args = [
       'contract',
       'invoke',
       '--id',
       contractId,
       '--source',
-      this.source,
+      source,
       '--network',
       this.network,
       '--send=yes',

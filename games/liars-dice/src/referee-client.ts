@@ -88,6 +88,13 @@ export type CliRefereeClientOptions = {
   /** Bounded retry for transient (non-contract) CLI/network failures. */
   retries?: number
   retryDelayMs?: number
+  /**
+   * CLI identity name per seat index. When a per-seat mutating call is made
+   * for seat i, the transaction is signed by `sourceForSeat[i]` (falling
+   * back to `source`) so the referee's `require_auth()` sees the seat
+   * owner's signature. Deploys always use `source`.
+   */
+  sourceForSeat?: Record<number, string>
 }
 
 /** Strips a leading `0x` from a hex string (Bytes/BytesN CLI args are hex WITHOUT `0x`). */
@@ -109,6 +116,7 @@ export class CliRefereeClient {
   private readonly stellarBin: string
   private readonly retries: number
   private readonly retryDelayMs: number
+  private readonly sourceForSeat: Record<number, string>
 
   constructor(opts: CliRefereeClientOptions = {}) {
     this.network = opts.network ?? 'testnet'
@@ -116,6 +124,7 @@ export class CliRefereeClient {
     this.stellarBin = opts.stellarBin ?? DEFAULT_STELLAR_BIN
     this.retries = opts.retries ?? 3
     this.retryDelayMs = opts.retryDelayMs ?? 3_000
+    this.sourceForSeat = opts.sourceForSeat ?? {}
   }
 
   /** `stellar contract deploy` for the `dice_valid` verifier. Returns the deployed contract id. */
@@ -124,16 +133,20 @@ export class CliRefereeClient {
     return stdout.trim()
   }
 
-  /** `stellar contract deploy` for the liars-dice referee. Returns the deployed contract id. */
+  /**
+   * `stellar contract deploy` for the liars-dice referee. Returns the
+   * deployed contract id. `playerAddresses[i]` becomes seat i's owner —
+   * every seat-i move must then be signed by that address (require_auth).
+   */
   async deployReferee(
     wasmPath: string,
-    opts: { verifier: string; nPlayers: number; dicePerPlayer: number; sides: number },
+    opts: { verifier: string; playerAddresses: string[]; dicePerPlayer: number; sides: number },
   ): Promise<string> {
     const stdout = await this.runDeploy(wasmPath, [
       '--verifier',
       opts.verifier,
-      '--n_players',
-      String(opts.nPlayers),
+      '--players',
+      JSON.stringify(opts.playerAddresses),
       '--dice_per_player',
       String(opts.dicePerPlayer),
       '--sides',
@@ -143,66 +156,66 @@ export class CliRefereeClient {
   }
 
   async commitNonce(refereeId: string, opts: { player: number; commitmentHex: string }): Promise<void> {
-    await this.invoke(refereeId, [
-      'commit_nonce',
-      '--player',
-      String(opts.player),
-      '--nonce_commitment',
-      stripHexPrefix(opts.commitmentHex),
-    ])
+    await this.invoke(
+      refereeId,
+      ['commit_nonce', '--player', String(opts.player), '--nonce_commitment', stripHexPrefix(opts.commitmentHex)],
+      opts.player,
+    )
   }
 
   async revealNonce(refereeId: string, opts: { player: number; nonceHex: string }): Promise<void> {
-    await this.invoke(refereeId, [
-      'reveal_nonce',
-      '--player',
-      String(opts.player),
-      '--nonce',
-      stripHexPrefix(opts.nonceHex),
-    ])
+    await this.invoke(
+      refereeId,
+      ['reveal_nonce', '--player', String(opts.player), '--nonce', stripHexPrefix(opts.nonceHex)],
+      opts.player,
+    )
   }
 
   async submitDice(
     refereeId: string,
     opts: { player: number; commitmentsHex: string[]; proofHex: string },
   ): Promise<void> {
-    await this.invoke(refereeId, [
-      'submit_dice',
-      '--player',
-      String(opts.player),
-      '--commitments',
-      JSON.stringify(opts.commitmentsHex.map(stripHexPrefix)),
-      '--proof',
-      stripHexPrefix(opts.proofHex),
-    ])
+    await this.invoke(
+      refereeId,
+      [
+        'submit_dice',
+        '--player',
+        String(opts.player),
+        '--commitments',
+        JSON.stringify(opts.commitmentsHex.map(stripHexPrefix)),
+        '--proof',
+        stripHexPrefix(opts.proofHex),
+      ],
+      opts.player,
+    )
   }
 
   async bid(refereeId: string, opts: { player: number; quantity: number; face: number }): Promise<void> {
-    await this.invoke(refereeId, [
-      'bid',
-      '--player',
-      String(opts.player),
-      '--quantity',
-      String(opts.quantity),
-      '--face',
-      String(opts.face),
-    ])
+    await this.invoke(
+      refereeId,
+      ['bid', '--player', String(opts.player), '--quantity', String(opts.quantity), '--face', String(opts.face)],
+      opts.player,
+    )
   }
 
   async challenge(refereeId: string, opts: { player: number }): Promise<void> {
-    await this.invoke(refereeId, ['challenge', '--player', String(opts.player)])
+    await this.invoke(refereeId, ['challenge', '--player', String(opts.player)], opts.player)
   }
 
   async revealDice(refereeId: string, opts: { player: number; dice: number[]; saltsHex: string[] }): Promise<void> {
-    await this.invoke(refereeId, [
-      'reveal_dice',
-      '--player',
-      String(opts.player),
-      '--dice',
-      JSON.stringify(opts.dice),
-      '--salts',
-      JSON.stringify(opts.saltsHex.map(stripHexPrefix)),
-    ])
+    await this.invoke(
+      refereeId,
+      [
+        'reveal_dice',
+        '--player',
+        String(opts.player),
+        '--dice',
+        JSON.stringify(opts.dice),
+        '--salts',
+        JSON.stringify(opts.saltsHex.map(stripHexPrefix)),
+      ],
+      opts.player,
+    )
   }
 
   async gameState(refereeId: string): Promise<ChainGameState> {
@@ -228,15 +241,20 @@ export class CliRefereeClient {
     return this.execWithRetry(args)
   }
 
-  /** Mutating call (`--send=yes`). */
-  private async invoke(contractId: string, methodArgs: string[]): Promise<string> {
+  /**
+   * Mutating call (`--send=yes`). When `seat` is given, signs with that
+   * seat's identity (`sourceForSeat[seat]`, falling back to `source`) so
+   * the referee's per-seat `require_auth()` is satisfied.
+   */
+  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<string> {
+    const source = seat !== undefined ? (this.sourceForSeat[seat] ?? this.source) : this.source
     const args = [
       'contract',
       'invoke',
       '--id',
       contractId,
       '--source',
-      this.source,
+      source,
       '--network',
       this.network,
       '--send=yes',

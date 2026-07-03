@@ -9,6 +9,10 @@ import { ProvablyHiddenTag } from "@/components/proof/verified-stamp";
 export interface SetupOptions {
   investigators: number;
   model: string;
+  /** Which side the human plays. 'phantom' proves every move in YOUR browser (M8.5). */
+  seat: "investigator" | "phantom";
+  /** List the match in the open lobby so another browser can claim the human seat (M8.4). */
+  open: boolean;
 }
 
 export interface SetupPanelProps {
@@ -27,20 +31,47 @@ const MAX_INVESTIGATORS = 5;
 export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
   const [investigators, setInvestigators] = useState(3);
   const [model, setModel] = useState("");
+  const [seat, setSeat] = useState<"investigator" | "phantom">("investigator");
+  const [open, setOpen] = useState(false);
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>New match</CardTitle>
         <CardDescription>
-          You play the first Investigator seat. The Phantom and the rest of the Investigators are
-          AI, each move a real proof verified on Stellar testnet.
+          {seat === "investigator"
+            ? "You play the first Investigator seat. The Phantom and the rest of the Investigators are AI, each move a real proof verified on Stellar testnet."
+            : "You play the Phantom: your position never leaves this browser — every hidden move is proven HERE with bb.js and only the proof goes on-chain."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <div>
           <label className="text-xs font-semibold uppercase tracking-[0.08em] text-fg-subtle">
-            Investigators (you + AI)
+            Your seat
+          </label>
+          <div className="mt-2 flex gap-2">
+            {(["investigator", "phantom"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                disabled={disabled}
+                onClick={() => setSeat(option)}
+                className={
+                  "h-9 flex-1 rounded-[var(--radius-sm)] border px-3 text-sm capitalize transition-colors disabled:pointer-events-none disabled:opacity-40 " +
+                  (seat === option
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border-strong text-fg-muted hover:border-accent hover:text-accent")
+                }
+              >
+                {option === "phantom" ? "Phantom (prove in-browser)" : "Investigator"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-[0.08em] text-fg-subtle">
+            {seat === "investigator" ? "Investigators (you + AI)" : "AI investigators hunting you"}
           </label>
           <div className="mt-2 flex items-center gap-3">
             <button
@@ -63,7 +94,9 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
               <Plus className="h-3.5 w-3.5" />
             </button>
             <span className="text-xs text-fg-subtle">
-              you + {investigators - 1} AI investigator{investigators - 1 === 1 ? "" : "s"}
+              {seat === "investigator"
+                ? `you + ${investigators - 1} AI investigator${investigators - 1 === 1 ? "" : "s"}`
+                : `${investigators} AI investigator${investigators === 1 ? "" : "s"}`}
             </span>
           </div>
         </div>
@@ -83,13 +116,26 @@ export function SetupPanel({ onStart, disabled }: SetupPanelProps) {
           />
         </div>
 
+        {seat === "investigator" ? (
+          <label className="flex items-center gap-2 text-sm text-fg-muted">
+            <input
+              type="checkbox"
+              checked={open}
+              disabled={disabled}
+              onChange={(e) => setOpen(e.target.checked)}
+              className="h-4 w-4 accent-[var(--accent,#888)]"
+            />
+            Open to the lobby (leave your seat unclaimed so anyone can join)
+          </label>
+        ) : null}
+
         <div className="flex items-center justify-between gap-4 border-t border-border pt-5">
           <ProvablyHiddenTag label="Phantom start position" />
           <Button
             variant="primary"
             size="lg"
             disabled={disabled}
-            onClick={() => onStart({ investigators, model: model.trim() })}
+            onClick={() => onStart({ investigators, model: model.trim(), seat, open: seat === "investigator" && open })}
           >
             Deploy a real match
           </Button>

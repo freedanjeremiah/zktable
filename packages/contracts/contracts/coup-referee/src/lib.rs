@@ -9,15 +9,19 @@ extern crate alloc;
 // instance-storage state, `Result` returns, no `Option<compound-type>`
 // fields under `testutils` -- see that file's module doc for the gotcha).
 //
-// --- HONEST SIMPLIFICATION (PRD SS7.2, deck v1) -----------------------------
-// This is NOT full mental-poker/coSNARK dealing security. The initial hand
-// commitments are supplied by a semi-honest dealer/orchestrator during the
-// `Deal` phase (the `deal` entrypoint below) -- this referee does not verify
-// that the deal came from a valid shuffle over a shared deck (a
-// `valid_shuffle` circuit proving a permutation is a bijection over [0,N)
-// would be needed for that, and is explicitly out of scope for v1 -- see the
-// `card_membership` circuit's module doc and the M6.3 report). What IS real
-// and load-bearing: once dealt, a player's actual hand is fixed and hidden
+// --- Provably fair deal (M8.3, deck v1.5) -----------------------------------
+// The deal is now PROVEN, not trusted: before any hand exists the referee
+// runs a sealed commit-reveal seed (both players' nonces, exactly the
+// liars-dice referee's pattern), then requires a `valid_shuffle` ZK proof
+// that the entire 15-card committed deck (3 copies x 5 characters, real
+// Coup) is the canonical card set permuted by the SEED-FORCED order --
+// public_inputs are rebuilt from the referee's OWN stored seed, so a proof
+// minted for any other seed/order is rejected. Hands are then assigned by
+// FIXED deck position (player p gets leaves 2p and 2p+1) with no dealer
+// input at all. What deliberately REMAINS (deck v2 territory, documented):
+// the dealer/orchestrator generates the salts and therefore still SEES the
+// cards -- hiding cards from the dealer needs mental-poker/MPC. What IS real
+// and load-bearing beyond the shuffle: a player's hand is fixed and hidden
 // behind Poseidon2 commitments, and the `card_membership` ZK proof genuinely
 // proves (in zero knowledge, without revealing which of the two cards it is,
 // or the other card's identity) that a claimed character sits in that
@@ -69,6 +73,8 @@ use ultrahonk_soroban_verifier::PROOF_BYTES;
 
 /// Fixed hand size, matching `card_membership`'s `H` (Coup: 2 influence cards).
 const CARD_H: u32 = 2;
+/// Deck size, matching `valid_shuffle`'s `N` (3 copies x 5 characters).
+const DECK_N: u32 = 15;
 /// v1 scope: 2-4 players (see module doc).
 const MIN_PLAYERS: u32 = 2;
 const MAX_PLAYERS: u32 = 4;
@@ -100,12 +106,18 @@ pub enum Error {
     SlotAlreadyRevealed = 16,
     BadSlotIndex = 17,
     CardRevealMismatch = 18,
+    AlreadyCommitted = 19,
+    NonceRevealMismatch = 20,
+    AlreadyNonceRevealed = 21,
+    NotFullyCommitted = 22,
 }
 
 #[contracttype]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Phase {
-    Deal,
+    SeedCommit,
+    SeedReveal,
+    Shuffle,
     Playing,
     AwaitingResponse,
     AwaitingReveal,
@@ -121,6 +133,9 @@ pub enum Phase {
 #[contracttype]
 #[derive(Clone)]
 pub struct PlayerData {
+    pub address: Address,
+    pub nonce_commitment: Option<BytesN<32>>, // seed commit-reveal (M8.3)
+    pub nonce: Option<BytesN<32>>,
     pub commitments: Vec<BytesN<32>>, // len 2 once dealt; empty == not yet dealt
     pub dead: Vec<bool>,              // len 2 once dealt; dead[i] == slot i revealed/discarded
     pub influence: u32,
@@ -130,6 +145,8 @@ pub struct PlayerData {
 #[contracttype]
 #[derive(Clone)]
 pub struct PlayerView {
+    pub seed_committed: bool,
+    pub seed_revealed: bool,
     pub dealt: bool,
     pub commitments: Vec<BytesN<32>>,
     pub dead: Vec<bool>,
@@ -142,6 +159,8 @@ pub struct PlayerView {
 pub struct GameState {
     pub phase: Phase,
     pub n_players: u32,
+    pub seed: Option<BytesN<32>>,
+    pub deck: Vec<BytesN<32>>, // the 15 shuffle-proven leaves; empty until Shuffle completes
     pub players: Vec<PlayerView>,
     pub turn: u32,
     pub last_claim_player: Option<u32>,
@@ -156,6 +175,15 @@ pub struct GameState {
 
 fn key_verifier() -> Symbol {
     symbol_short!("verifier")
+}
+fn key_shuffle_verifier() -> Symbol {
+    symbol_short!("shufvrf")
+}
+fn key_seed() -> Symbol {
+    symbol_short!("seed")
+}
+fn key_deck() -> Symbol {
+    symbol_short!("deck")
 }
 fn key_nplayers() -> Symbol {
     symbol_short!("nplayers")
@@ -209,6 +237,10 @@ fn poseidon2_hash2(env: &Env, a: &BytesN<32>, b: &BytesN<32>) -> BytesN<32> {
 /// 32-byte big-endian encoding of a u32, high bytes zero -- the same field
 /// representation `zktable-graph`'s `be32(&BigUint)` produces for a small
 /// decimal value passed e.g. as `--claimed 3`.
+fn zero32(env: &Env) -> BytesN<32> {
+    BytesN::from_array(env, &[0u8; 32])
+}
+
 fn be32(x: u32) -> [u8; 32] {
     let mut a = [0u8; 32];
     a[28..32].copy_from_slice(&x.to_be_bytes());
@@ -257,6 +289,16 @@ fn check_turn(env: &Env, player: u32) -> Result<(), Error> {
     Ok(())
 }
 
+/// Loads the seat and requires its owner's authorization. Every per-seat
+/// entry point calls this for the ACTING seat (claimer, challenger,
+/// prover, revealer) before touching state — seat addresses are fixed at
+/// construction (see spec M8.1).
+fn require_seat_auth(players: &Vec<PlayerData>, player: u32) -> Result<PlayerData, Error> {
+    let p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+    p.address.require_auth();
+    Ok(p)
+}
+
 fn first_alive(players: &Vec<PlayerData>) -> u32 {
     for i in 0..players.len() {
         if players.get(i).unwrap().alive {
@@ -278,9 +320,9 @@ fn advance_turn(env: &Env, players: &Vec<PlayerData>, player: u32) {
     env.storage().instance().set(&key_turn(), &next);
 }
 
-fn all_dealt(players: &Vec<PlayerData>) -> bool {
+fn all_by<F: Fn(&PlayerData) -> bool>(players: &Vec<PlayerData>, f: F) -> bool {
     for i in 0..players.len() {
-        if players.get(i).unwrap().commitments.is_empty() {
+        if !f(&players.get(i).unwrap()) {
             return false;
         }
     }
@@ -304,64 +346,161 @@ fn get_opt_u32(env: &Env, key: &Symbol) -> Option<u32> {
 
 #[contractimpl]
 impl CoupRefereeContract {
-    /// Set config once at deploy. `n_players` must be in [2, 4] (see module
-    /// doc -- unlike the liars-dice referee's hard 2-player lock, elimination
-    /// by influence loss is sound for any starting count >= 2).
-    pub fn __constructor(env: Env, verifier: Address, n_players: u32) -> Result<(), Error> {
+    /// Set config once at deploy. `players` is the per-seat owner address
+    /// vector (seat i is owned — and its moves signed — by `players[i]`);
+    /// its length must be in [2, 4] (see module doc -- unlike the liars-dice
+    /// referee's hard 2-player lock, elimination by influence loss is sound
+    /// for any starting count >= 2). `verifier` holds the `card_membership`
+    /// VK; `shuffle_verifier` holds the `valid_shuffle` VK (M8.3).
+    pub fn __constructor(
+        env: Env,
+        verifier: Address,
+        shuffle_verifier: Address,
+        players: Vec<Address>,
+    ) -> Result<(), Error> {
         if env.storage().instance().has(&key_verifier()) {
             return Err(Error::AlreadyInitialized);
         }
+        let n_players = players.len();
         if n_players < MIN_PLAYERS || n_players > MAX_PLAYERS {
             return Err(Error::UnsupportedConfig);
         }
         env.storage().instance().set(&key_verifier(), &verifier);
+        env.storage().instance().set(&key_shuffle_verifier(), &shuffle_verifier);
         env.storage().instance().set(&key_nplayers(), &n_players);
-        set_phase(&env, Phase::Deal);
+        set_phase(&env, Phase::SeedCommit);
 
-        let mut players: Vec<PlayerData> = Vec::new(&env);
-        for _ in 0..n_players {
-            players.push_back(PlayerData {
+        let mut roster: Vec<PlayerData> = Vec::new(&env);
+        for i in 0..n_players {
+            roster.push_back(PlayerData {
+                address: players.get(i).unwrap(),
+                nonce_commitment: None,
+                nonce: None,
                 commitments: Vec::new(&env),
                 dead: Vec::new(&env),
                 influence: START_INFLUENCE,
                 alive: true,
             });
         }
-        set_players(&env, &players);
+        set_players(&env, &roster);
         env.storage().instance().set(&key_turn(), &0u32);
         Ok(())
     }
 
-    /// Deal phase: the (semi-honest, per the module doc) dealer/orchestrator
-    /// supplies `player`'s 2 hand-card commitments. Once every player has
-    /// been dealt, advances to `Playing` with `turn` at the first alive
-    /// player.
-    pub fn deal(env: Env, player: u32, commitments: Vec<BytesN<32>>) -> Result<(), Error> {
-        if get_phase(&env) != Phase::Deal {
+    /// Seed phase 1 (M8.3): commit `hash2(nonce, 0)`. Every player commits
+    /// BEFORE any nonce is revealed (prevents last-mover seed bias — the
+    /// liars-dice referee's exact pattern). Once all have committed,
+    /// advances to `SeedReveal`.
+    pub fn commit_seed_nonce(env: Env, player: u32, nonce_commitment: BytesN<32>) -> Result<(), Error> {
+        if get_phase(&env) != Phase::SeedCommit {
             return Err(Error::WrongPhase);
         }
-        if commitments.len() != CARD_H {
-            return Err(Error::BadArrayLength);
-        }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
-        if !p.commitments.is_empty() {
-            return Err(Error::AlreadyDealt);
+        let mut p = require_seat_auth(&players, player)?;
+        if p.nonce_commitment.is_some() {
+            return Err(Error::AlreadyCommitted);
         }
-        p.commitments = commitments;
-        let mut dead: Vec<bool> = Vec::new(&env);
-        for _ in 0..CARD_H {
-            dead.push_back(false);
-        }
-        p.dead = dead;
+        p.nonce_commitment = Some(nonce_commitment);
         players.set(player, p);
 
-        if all_dealt(&players) {
-            set_phase(&env, Phase::Playing);
-            let first = first_alive(&players);
-            env.storage().instance().set(&key_turn(), &first);
+        if all_by(&players, |p| p.nonce_commitment.is_some()) {
+            set_phase(&env, Phase::SeedReveal);
         }
         set_players(&env, &players);
+        Ok(())
+    }
+
+    /// Seed phase 2 (M8.3): reveal the committed nonce. Once every player
+    /// has revealed, the joint seed is folded in player-index order
+    /// (`seed = hash2(hash2(0, n_0), n_1) ...` — same left-fold as
+    /// `zktable-graph seed` and the liars-dice referee) and the phase
+    /// advances to `Shuffle`.
+    pub fn reveal_seed_nonce(env: Env, player: u32, nonce: BytesN<32>) -> Result<(), Error> {
+        if get_phase(&env) != Phase::SeedReveal {
+            return Err(Error::WrongPhase);
+        }
+        let mut players = get_players(&env);
+        let mut p = require_seat_auth(&players, player)?;
+        if p.nonce.is_some() {
+            return Err(Error::AlreadyNonceRevealed);
+        }
+        let commitment = p.nonce_commitment.clone().ok_or(Error::NotFullyCommitted)?;
+        let zero = zero32(&env);
+        let computed = poseidon2_hash2(&env, &nonce, &zero);
+        if computed != commitment {
+            return Err(Error::NonceRevealMismatch);
+        }
+        p.nonce = Some(nonce);
+        players.set(player, p);
+
+        if all_by(&players, |p| p.nonce.is_some()) {
+            let mut acc = zero32(&env);
+            for i in 0..players.len() {
+                let n = players.get(i).unwrap().nonce.clone().unwrap();
+                acc = poseidon2_hash2(&env, &acc, &n);
+            }
+            env.storage().instance().set(&key_seed(), &acc);
+            set_phase(&env, Phase::Shuffle);
+        }
+        set_players(&env, &players);
+        Ok(())
+    }
+
+    /// Shuffle phase (M8.3): the dealer submits the 15 committed deck leaves
+    /// plus a `valid_shuffle` proof. `public_inputs = seed | leaf_0..leaf_14`
+    /// is rebuilt from the referee's OWN stored seed (never client-supplied),
+    /// so only the unique seed-forced permutation verifies — the dealer has
+    /// no say in the order. On success, hands are assigned by FIXED deck
+    /// position (player p gets leaves 2p and 2p+1; the rest stay burned) and
+    /// play begins. Permissionless by design: the proof is the trust anchor,
+    /// and whoever holds the salts (the dealer) is the only party able to
+    /// produce it.
+    pub fn submit_shuffle(env: Env, leaves: Vec<BytesN<32>>, proof: Bytes) -> Result<(), Error> {
+        if get_phase(&env) != Phase::Shuffle {
+            return Err(Error::WrongPhase);
+        }
+        if leaves.len() != DECK_N {
+            return Err(Error::BadArrayLength);
+        }
+        let seed: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&key_seed())
+            .ok_or(Error::WrongPhase)?;
+
+        let mut public_inputs = Bytes::new(&env);
+        public_inputs.append(&Bytes::from_array(&env, &seed.to_array()));
+        for i in 0..leaves.len() {
+            public_inputs.append(&Bytes::from_array(&env, &leaves.get(i).unwrap().to_array()));
+        }
+
+        let shuffle_verifier: Address =
+            env.storage().instance().get(&key_shuffle_verifier()).unwrap();
+        verify_proof(&env, &shuffle_verifier, public_inputs, proof)?;
+
+        env.storage().instance().set(&key_deck(), &leaves);
+
+        // Position-assigned hands: player p == deck positions 2p, 2p+1.
+        let mut players = get_players(&env);
+        for i in 0..players.len() {
+            let mut p = players.get(i).unwrap();
+            let mut hand: Vec<BytesN<32>> = Vec::new(&env);
+            hand.push_back(leaves.get(i * CARD_H).unwrap());
+            hand.push_back(leaves.get(i * CARD_H + 1).unwrap());
+            p.commitments = hand;
+            let mut dead: Vec<bool> = Vec::new(&env);
+            for _ in 0..CARD_H {
+                dead.push_back(false);
+            }
+            p.dead = dead;
+            players.set(i, p);
+        }
+        set_players(&env, &players);
+
+        set_phase(&env, Phase::Playing);
+        let players = get_players(&env);
+        let first = first_alive(&players);
+        env.storage().instance().set(&key_turn(), &first);
         Ok(())
     }
 
@@ -376,7 +515,7 @@ impl CoupRefereeContract {
         }
         check_turn(&env, player)?;
         let players = get_players(&env);
-        let p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let p = require_seat_auth(&players, player)?;
         if !p.alive {
             return Err(Error::NotAlive);
         }
@@ -404,7 +543,7 @@ impl CoupRefereeContract {
             return Err(Error::CannotChallengeSelf);
         }
         let players = get_players(&env);
-        let ch = players.get(challenger).ok_or(Error::BadPlayerIndex)?;
+        let ch = require_seat_auth(&players, challenger)?;
         if !ch.alive {
             return Err(Error::NotAlive);
         }
@@ -440,7 +579,7 @@ impl CoupRefereeContract {
             return Err(Error::ClaimMismatch);
         }
         let players = get_players(&env);
-        let p = players.get(target).ok_or(Error::BadPlayerIndex)?;
+        let p = require_seat_auth(&players, target)?;
 
         let mut public_inputs = Bytes::new(&env);
         public_inputs.append(&Bytes::from_array(&env, &be32(claimed)));
@@ -481,7 +620,7 @@ impl CoupRefereeContract {
             return Err(Error::BadSlotIndex);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if p.dead.get(slot).unwrap_or(true) {
             return Err(Error::SlotAlreadyRevealed);
         }
@@ -528,6 +667,8 @@ impl CoupRefereeContract {
         for i in 0..players.len() {
             let p = players.get(i).unwrap();
             views.push_back(PlayerView {
+                seed_committed: p.nonce_commitment.is_some(),
+                seed_revealed: p.nonce.is_some(),
                 dealt: !p.commitments.is_empty(),
                 commitments: p.commitments.clone(),
                 dead: p.dead.clone(),
@@ -538,6 +679,12 @@ impl CoupRefereeContract {
         GameState {
             phase: get_phase(&env),
             n_players: env.storage().instance().get(&key_nplayers()).unwrap(),
+            seed: env.storage().instance().get(&key_seed()),
+            deck: env
+                .storage()
+                .instance()
+                .get(&key_deck())
+                .unwrap_or_else(|| Vec::new(&env)),
             players: views,
             turn: get_turn(&env),
             last_claim_player: get_opt_u32(&env, &key_claimp()),

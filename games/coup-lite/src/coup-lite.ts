@@ -6,12 +6,13 @@
 // loses influence. Mirrors Liar's Dice's shape (`games/liars-dice/src/
 // liars-dice.ts`) as the SDK's third G1 showcase.
 //
-// HONEST SIMPLIFICATION (PRD §7.2, deck v1 — see the `card_membership`
-// circuit's and the `coup-referee` contract's module docs for the full
-// statement): hands are dealt by a semi-honest dealer/orchestrator, NOT a
-// ZK-proven valid shuffle (`valid_shuffle` is out of scope for v1). What IS
-// real and load-bearing: the `card_membership` proof genuinely proves a
-// claimed character sits in a player's committed hand, in zero knowledge.
+// PROVABLY FAIR DEAL (M8.3, deck v1.5 — see the `valid_shuffle` circuit's
+// and the `coup-referee` contract's module docs): on-chain, the deal is now
+// a seed-forced, ZK-proven shuffle of the canonical 15-card deck with hands
+// assigned by fixed deck position — the dealer cannot choose who gets what,
+// only learn it (the dealer still SEES the cards; hiding them too is
+// mental-poker/MPC, deck v2). The `card_membership` proof remains the
+// load-bearing "prove-hold-or-bluff" ZK during play.
 //
 // Local-mirror design note (same pattern as Liar's Dice's `diceByPlayer` —
 // see that file's module doc): `@zktable/core`'s `apply` reducers are pure
@@ -26,26 +27,17 @@
 // does NOT read other players' mirrored hands — only `view.self.secret.hand`
 // (own hand) plus public claim/challenge history.
 //
-// Turn-structure deviation from the on-chain referee (documented, not a
-// discrepancy in the ZK-secured guarantee): `@zktable/core`'s engine always
-// advances `turn` to the strict next player after ANY move (see
-// `engine.ts`'s `advanceTurn`), and only the current-turn player may submit
-// a move — there is no generic "skip an eliminated player's turn" hook (the
-// board referee's `advance_turn`/liars-dice's own skip-dead-players logic is
-// each contract's own bespoke code, not something `@zktable/core`'s engine
-// provides). The ON-CHAIN `coup-referee` is more permissive AND more
-// general — it natively supports 2-4 players and skips eliminated players
-// when advancing turn (proven by its native 3-player tests). This
-// `defineGame`/local engine/on-chain demo instead fixes N_PLAYERS = 2 (same
-// structural reason Liar's Dice's v1 fixed 2 players): with exactly 2
-// players, the moment one is eliminated the match's `winnerId` is set and
-// `Match` transitions to `'finished'` on that very same move, so no
-// eliminated player is ever asked for a further turn. `challenge` is
-// further restricted to the single player whose turn falls immediately
-// after a still-standing claim by someone else (round-robin's natural "next"
-// player) — a reasonable, simpler local-mirror restriction for headless AI
-// play and fast tests; it does not weaken the on-chain game, which is
-// authoritative for the real showcase run (`runner.ts`).
+// Turn structure (M8.2): this definition supports the referee's full 2-4
+// player range. Elimination is declared via `turn.eliminated` (a player at
+// 0 influence), and `@zktable/core`'s engine skips eliminated seats when
+// advancing the turn — mirroring the on-chain `coup-referee`'s own
+// `advance_turn` skip-dead logic, so the local mirror stays in lockstep
+// with the chain for any player count. `challenge` remains restricted to
+// the current-turn player facing a still-standing claim by someone else
+// (round-robin's natural "next active" player) — a simpler local-mirror
+// restriction for headless AI play; the on-chain game, which lets ANY
+// alive player challenge, stays authoritative for the showcase run
+// (`runner.ts` always drives the chain's own turn owner).
 
 import { defineGame, zk } from '@zktable/core'
 import type { Move, MoveContext, Outcome, PlayerId, PlayerView, MatchState, PublicState, SetupContext } from '@zktable/core'
@@ -55,14 +47,10 @@ export const CHARACTERS = [0, 1, 2, 3, 4] as const
 export const CHARACTER_NAMES = ['Duke', 'Assassin', 'Captain', 'Contessa', 'Ambassador'] as const
 export const HAND_SIZE = 2
 export const START_INFLUENCE = 2
-/**
- * This showcase's `defineGame`/local engine/on-chain demo scope: exactly 2
- * players (see the module doc's turn-structure deviation note). The
- * ON-CHAIN `coup-referee` contract itself is more general and natively
- * supports 2-4 players (proven by its native 3-player tests) — the
- * restriction here is a `defineGame`/local-engine limitation, not a
- * contract one.
- */
+/** The player range supported end-to-end (defineGame AND the on-chain referee). */
+export const MIN_PLAYERS = 2
+export const MAX_PLAYERS = 4
+/** Default seat count for the demos/runner (override with COUP_PLAYERS / opts.players). */
 export const N_PLAYERS = 2
 
 export type Hand = [number, number]
@@ -148,12 +136,14 @@ function alivePlayers(state: MatchState): PlayerId[] {
 
 export const coupLite = defineGame({
   name: 'coup-lite',
-  players: { min: N_PLAYERS, max: N_PLAYERS },
+  players: { min: MIN_PLAYERS, max: MAX_PLAYERS },
 
   components: {
-    // Public shared-deck declaration (the character pool); the actual deal is
-    // semi-honest v1 (see module doc) and each hand stays hidden per player.
+    // Public shared-deck declaration (the character pool). The shuffle marker
+    // is REAL on-chain as of M8.3: a seed-forced `valid_shuffle` proof with
+    // position-assigned hands (see module doc); each hand stays hidden.
     deck: zk.deck.of([...CHARACTER_NAMES]),
+    shuffle: zk.deck.shuffle(),
     hand: zk.deck.deal(HAND_SIZE),
   },
 
@@ -165,7 +155,7 @@ export const coupLite = defineGame({
       deadByPlayer: {} as Record<PlayerId, [boolean, boolean]>,
       lastClaim: null as ClaimEntry | null,
       claimHistory: [] as ClaimEntry[],
-      eliminated: null as PlayerId | null,
+      eliminatedIds: [] as PlayerId[],
       winnerId: null as PlayerId | null,
     }),
     // Real data (matches Blackout's `state.secret` / Liar's Dice's own
@@ -200,6 +190,10 @@ export const coupLite = defineGame({
 
   turn: {
     order: 'clockwise',
+    // A player at zero influence is out: the engine skips their turn and
+    // returns no legal moves for them (mirrors the referee's advance_turn).
+    eliminated: (state: MatchState, playerId: PlayerId): boolean =>
+      (influenceByPlayer(state)[playerId] ?? START_INFLUENCE) === 0,
     moves: {
       claim: {
         // Public claim to hold `character` — no ZK binding by itself (the
@@ -245,6 +239,7 @@ export const coupLite = defineGame({
           const loser = claimIsTrue ? challenger : claim.player
 
           const { influenceByPlayer: nextInfluence, deadByPlayer: nextDead } = loseInfluence(state, loser)
+          const priorEliminated = (state.public.eliminatedIds as PlayerId[]) ?? []
           const nextState: MatchState = {
             ...state,
             public: {
@@ -252,7 +247,8 @@ export const coupLite = defineGame({
               influenceByPlayer: nextInfluence,
               deadByPlayer: nextDead,
               lastClaim: null,
-              eliminated: (nextInfluence[loser] ?? 0) === 0 ? loser : state.public.eliminated,
+              eliminatedIds:
+                (nextInfluence[loser] ?? 0) === 0 ? [...priorEliminated, loser] : priorEliminated,
             },
           }
           const survivors = alivePlayers(nextState)
