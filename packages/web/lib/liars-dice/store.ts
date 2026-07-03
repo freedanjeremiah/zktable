@@ -7,10 +7,10 @@ import type { Match, PlayerId } from "@zktable/core";
 import type { ChainGameState, CliRefereeClient, DiceProver, Roster } from "@zktable/liars-dice";
 
 export type LiarsMatchEvent =
-  | { type: "bid"; player: PlayerId; quantity: number; face: number; at: number }
-  | { type: "challenge"; player: PlayerId; at: number }
-  | { type: "reveal"; player: PlayerId; dice: number[]; at: number }
-  | { type: "roll"; player: PlayerId; at: number }
+  | { type: "bid"; player: PlayerId; quantity: number; face: number; at: number; tx?: string | null }
+  | { type: "challenge"; player: PlayerId; at: number; tx?: string | null }
+  | { type: "reveal"; player: PlayerId; dice: number[]; at: number; tx?: string | null }
+  | { type: "roll"; player: PlayerId; at: number; tx?: string | null }
   | { type: "error"; message: string; at: number };
 
 export type LiarsMatchRuntime = {

@@ -67,7 +67,21 @@ export async function buildUnsignedInvokeXdr(opts: {
   ]);
 }
 
-/** Submits a signed transaction envelope; returns the CLI's response (tx result). */
-export async function sendSignedTx(network: string, signedXdr: string): Promise<string> {
-  return stellar(["tx", "send", "--network", network, signedXdr]);
+/** Submits a signed transaction envelope; returns the submitted tx hash when the CLI printed one (on stderr). */
+export async function sendSignedTx(network: string, signedXdr: string): Promise<string | null> {
+  try {
+    const { stdout, stderr } = await execFileAsync(
+      DEFAULT_STELLAR_BIN,
+      ["tx", "send", "--network", network, signedXdr],
+      { env: toolEnv(), maxBuffer: 32 * 1024 * 1024 },
+    );
+    const m = /explorer\/testnet\/tx\/([0-9a-f]{64})/i.exec(`${stderr ?? ""}\n${stdout ?? ""}`);
+    return m ? m[1]! : null;
+  } catch (err) {
+    const stderr =
+      typeof err === "object" && err !== null && "stderr" in err
+        ? String((err as { stderr: unknown }).stderr)
+        : "";
+    throw new Error(`stellar tx send failed: ${stderr.split("\n").slice(-6).join("\n")}`);
+  }
 }

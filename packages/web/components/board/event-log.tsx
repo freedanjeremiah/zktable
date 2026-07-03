@@ -1,4 +1,5 @@
 import { AlertCircle, Eye, MapPin, ShieldCheck } from "lucide-react";
+import { TxLink } from "@/components/proof/tx-link";
 import type { MatchEvent } from "@/lib/blackout/match-store";
 import { ticketLabel } from "@/lib/board/ticket-meta";
 import { cn } from "@/lib/utils";
@@ -48,7 +49,15 @@ export function EventLog({ log, className }: EventLogProps) {
         return (
           <li key={`${event.at}-${i}`} className="flex items-start gap-2 text-xs">
             <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", tone)} />
-            <span className="leading-relaxed text-fg-muted">{text}</span>
+            <span className="leading-relaxed text-fg-muted">
+              {text}
+              {"tx" in event ? (
+                <>
+                  {" "}
+                  <TxLink tx={event.tx} />
+                </>
+              ) : null}
+            </span>
           </li>
         );
       })}

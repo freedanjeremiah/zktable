@@ -110,6 +110,14 @@ export function toBe32Hex(value: bigint): string {
   return hex.padStart(64, '0')
 }
 
+
+/** Extracts the submitted transaction hash from the CLI's stderr (it prints
+ *  a stellar.expert link for every sent tx). Null when none was printed. */
+function extractTxHash(stderr: string): string | null {
+  const m = /explorer\/testnet\/tx\/([0-9a-f]{64})/i.exec(stderr)
+  return m ? m[1]! : null
+}
+
 export class CliRefereeClient {
   private readonly network: string
   private readonly source: string
@@ -155,27 +163,29 @@ export class CliRefereeClient {
     return stdout.trim()
   }
 
-  async commitNonce(refereeId: string, opts: { player: number; commitmentHex: string }): Promise<void> {
-    await this.invoke(
+  async commitNonce(refereeId: string, opts: { player: number; commitmentHex: string }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['commit_nonce', '--player', String(opts.player), '--nonce_commitment', stripHexPrefix(opts.commitmentHex)],
       opts.player,
     )
+    return res.txHash
   }
 
-  async revealNonce(refereeId: string, opts: { player: number; nonceHex: string }): Promise<void> {
-    await this.invoke(
+  async revealNonce(refereeId: string, opts: { player: number; nonceHex: string }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['reveal_nonce', '--player', String(opts.player), '--nonce', stripHexPrefix(opts.nonceHex)],
       opts.player,
     )
+    return res.txHash
   }
 
   async submitDice(
     refereeId: string,
     opts: { player: number; commitmentsHex: string[]; proofHex: string },
-  ): Promise<void> {
-    await this.invoke(
+  ): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       [
         'submit_dice',
@@ -188,22 +198,25 @@ export class CliRefereeClient {
       ],
       opts.player,
     )
+    return res.txHash
   }
 
-  async bid(refereeId: string, opts: { player: number; quantity: number; face: number }): Promise<void> {
-    await this.invoke(
+  async bid(refereeId: string, opts: { player: number; quantity: number; face: number }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['bid', '--player', String(opts.player), '--quantity', String(opts.quantity), '--face', String(opts.face)],
       opts.player,
     )
+    return res.txHash
   }
 
-  async challenge(refereeId: string, opts: { player: number }): Promise<void> {
-    await this.invoke(refereeId, ['challenge', '--player', String(opts.player)], opts.player)
+  async challenge(refereeId: string, opts: { player: number }): Promise<string | null> {
+    const res = await this.invoke(refereeId, ['challenge', '--player', String(opts.player)], opts.player)
+    return res.txHash
   }
 
-  async revealDice(refereeId: string, opts: { player: number; dice: number[]; saltsHex: string[] }): Promise<void> {
-    await this.invoke(
+  async revealDice(refereeId: string, opts: { player: number; dice: number[]; saltsHex: string[] }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       [
         'reveal_dice',
@@ -216,6 +229,7 @@ export class CliRefereeClient {
       ],
       opts.player,
     )
+    return res.txHash
   }
 
   async gameState(refereeId: string): Promise<ChainGameState> {
@@ -238,7 +252,7 @@ export class CliRefereeClient {
       '--',
       ...ctorArgs,
     ]
-    return this.execWithRetry(args)
+    return (await this.execWithRetry(args)).stdout
   }
 
   /**
@@ -246,7 +260,7 @@ export class CliRefereeClient {
    * seat's identity (`sourceForSeat[seat]`, falling back to `source`) so
    * the referee's per-seat `require_auth()` is satisfied.
    */
-  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<string> {
+  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<{ stdout: string; txHash: string | null }> {
     const source = seat !== undefined ? (this.sourceForSeat[seat] ?? this.source) : this.source
     const args = [
       'contract',
@@ -278,18 +292,18 @@ export class CliRefereeClient {
       '--',
       ...methodArgs,
     ]
-    return this.execWithRetry(args)
+    return (await this.execWithRetry(args)).stdout
   }
 
-  private async execWithRetry(args: string[]): Promise<string> {
+  private async execWithRetry(args: string[]): Promise<{ stdout: string; txHash: string | null }> {
     let lastError: unknown
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       try {
-        const { stdout } = await execFileAsync(this.stellarBin, args, {
+        const { stdout, stderr } = await execFileAsync(this.stellarBin, args, {
           env: toolEnv(),
           maxBuffer: 32 * 1024 * 1024,
         })
-        return stdout
+        return { stdout, txHash: extractTxHash(stderr ?? '') }
       } catch (err) {
         const stderr = typeof err === 'object' && err !== null && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : String(err)
         const cliError = new RefereeCliError(args, stderr)

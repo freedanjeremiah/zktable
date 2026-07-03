@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateProgress } from "@/components/board/create-progress";
+import { TxLink } from "@/components/proof/tx-link";
 import type { LiarsDto } from "@/lib/liars-dice/dto";
 import { cn } from "@/lib/utils";
 
@@ -268,10 +269,10 @@ export default function LiarsDicePage() {
               <ul className="flex flex-col gap-1.5">
                 {[...dto.log].reverse().map((e, i) => (
                   <li key={i} className="text-fg-muted">
-                    {e.type === "roll" && <span>{e.player} rolled (ZK-proven fair)</span>}
-                    {e.type === "bid" && <span className="text-fg">{e.player} bid {e.quantity} × face {e.face}</span>}
-                    {e.type === "challenge" && <span className="font-bold text-black">{e.player} challenged!</span>}
-                    {e.type === "reveal" && <span>{e.player} revealed [{e.dice.join(", ")}]</span>}
+                    {e.type === "roll" && <span>{e.player} rolled (ZK-proven fair) <TxLink tx={e.tx} /></span>}
+                    {e.type === "bid" && <span className="text-fg">{e.player} bid {e.quantity} × face {e.face} <TxLink tx={e.tx} /></span>}
+                    {e.type === "challenge" && <span className="font-bold text-black">{e.player} challenged! <TxLink tx={e.tx} /></span>}
+                    {e.type === "reveal" && <span>{e.player} revealed [{e.dice.join(", ")}] <TxLink tx={e.tx} /></span>}
                     {e.type === "error" && <span className="text-danger">{e.message}</span>}
                   </li>
                 ))}

@@ -86,7 +86,7 @@ export async function createCoupMatch(opts: { log?: (line: string) => void } = {
   if (!(await prover.shuffleLocalVerify(shuffle.proof, shuffle.publicInputs))) {
     throw new CoupApiError(500, "valid_shuffle proof failed local verification");
   }
-  await client.submitShuffle(refereeId, {
+  const shuffleTx = await client.submitShuffle(refereeId, {
     leavesHex: shuffle.leavesHex,
     proofHex: Buffer.from(shuffle.proof).toString("hex"),
   });
@@ -121,7 +121,7 @@ export async function createCoupMatch(opts: { log?: (line: string) => void } = {
     network,
     source,
     createdAt: Date.now(),
-    log: [{ type: "deal", at: Date.now() }],
+    log: [{ type: "deal", at: Date.now(), tx: shuffleTx }],
   };
   saveCoupMatch(runtime);
   return coupDto(runtime);
@@ -149,9 +149,9 @@ export async function submitHumanClaim(runtime: CoupMatchRuntime, character: num
     throw new CoupApiError(400, `character must be 0..${CHARACTER_NAMES.length - 1}`);
   }
   const humanId = runtime.roster[runtime.humanIdx]!.id;
-  await runtime.client.claim(runtime.refereeId, { player: runtime.humanIdx, character });
+  const tx = await runtime.client.claim(runtime.refereeId, { player: runtime.humanIdx, character });
   runtime.local.submit(humanId, { type: "claim", character });
-  runtime.log.push({ type: "claim", player: humanId, character, at: Date.now() });
+  runtime.log.push({ type: "claim", player: humanId, character, at: Date.now(), tx });
   await advanceAi(runtime);
 }
 
@@ -190,7 +190,9 @@ async function resolveChallenge(
   const targetHand = runtime.handsByPlayer[targetId]!;
   const claimWasTrue = targetHand.includes(claimedChar);
 
-  await runtime.client.challenge(runtime.refereeId, { challenger: challengerIdx, target: targetIdx });
+  const challengeTx = await runtime.client.challenge(runtime.refereeId, { challenger: challengerIdx, target: targetIdx });
+  let proveTx: string | null = null;
+  let revealTx: string | null = null;
 
   let loser: PlayerId;
   if (claimWasTrue) {
@@ -201,7 +203,7 @@ async function resolveChallenge(
       runtime.saltsByPlayer[targetId]!,
       heldIndex,
     );
-    await runtime.client.proveHold(runtime.refereeId, {
+    proveTx = await runtime.client.proveHold(runtime.refereeId, {
       target: targetIdx,
       claimed: claimedChar,
       proofHex: Buffer.from(proof.proof).toString("hex"),
@@ -210,7 +212,7 @@ async function resolveChallenge(
     loser = challengerId;
     const dead = runtime.deadByPlayer[loser]!;
     const slot = nextDeadSlot(dead);
-    await runtime.client.revealCard(runtime.refereeId, {
+    revealTx = await runtime.client.revealCard(runtime.refereeId, {
       player: challengerIdx,
       slot,
       card: runtime.handsByPlayer[loser]![slot],
@@ -222,7 +224,7 @@ async function resolveChallenge(
     loser = targetId;
     const dead = runtime.deadByPlayer[loser]!;
     const slot = nextDeadSlot(dead);
-    await runtime.client.revealCard(runtime.refereeId, {
+    revealTx = await runtime.client.revealCard(runtime.refereeId, {
       player: targetIdx,
       slot,
       card: targetHand[slot],
@@ -230,7 +232,17 @@ async function resolveChallenge(
     });
     dead[slot] = true;
   }
-  runtime.log.push({ type: "challenge", challenger: challengerId, target: targetId, claimWasTrue, loser, at: Date.now() });
+  runtime.log.push({
+    type: "challenge",
+    challenger: challengerId,
+    target: targetId,
+    claimWasTrue,
+    loser,
+    at: Date.now(),
+    tx: challengeTx,
+    proveTx,
+    revealTx,
+  });
   runtime.lastChainState = await runtime.client.gameState(runtime.refereeId);
 }
 
@@ -246,9 +258,9 @@ async function advanceAi(runtime: CoupMatchRuntime): Promise<void> {
     const move = chooseMove(runtime.local.view(aiId), `${runtime.seed}:move${runtime.log.length}:${aiId}`);
     if (move.type === "claim") {
       const character = move.character as number;
-      await runtime.client.claim(runtime.refereeId, { player: aiIdx, character });
+      const tx = await runtime.client.claim(runtime.refereeId, { player: aiIdx, character });
       runtime.local.submit(aiId, move);
-      runtime.log.push({ type: "claim", player: aiId, character, at: Date.now() });
+      runtime.log.push({ type: "claim", player: aiId, character, at: Date.now(), tx });
     } else {
       // AI challenges the standing claim (by the human).
       const targetIdx = state.last_claim_player!;

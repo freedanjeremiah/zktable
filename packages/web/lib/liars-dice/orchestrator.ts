@@ -86,14 +86,14 @@ export async function createLiarsMatch(opts: { log?: (line: string) => void } = 
   for (let i = 0; i < roster.length; i++) {
     const salts = Array.from({ length: DICE_PER_PLAYER }, () => randomField());
     const proof = await prover.proveDice(seedHex, i, salts);
-    await client.submitDice(refereeId, {
+    const rollTx = await client.submitDice(refereeId, {
       player: i,
       commitmentsHex: proof.commitmentsHex,
       proofHex: Buffer.from(proof.proof).toString("hex"),
     });
     diceByPlayer[roster[i]!.id] = proof.dice;
     saltsByPlayer[roster[i]!.id] = salts;
-    log_.push({ type: "roll", player: roster[i]!.id, at: Date.now() });
+    log_.push({ type: "roll", player: roster[i]!.id, at: Date.now(), tx: rollTx });
     log(`player ${i} rolled + proved on-chain`);
   }
 
@@ -150,9 +150,9 @@ export async function submitHumanBid(
   if (!legal) {
     throw new LiarsApiError(400, `illegal bid ${opts.quantity}×${opts.face} (must strictly escalate the standing bid)`);
   }
-  await runtime.client.bid(runtime.refereeId, { player: runtime.humanIdx, quantity: opts.quantity, face: opts.face });
+  const tx = await runtime.client.bid(runtime.refereeId, { player: runtime.humanIdx, quantity: opts.quantity, face: opts.face });
   runtime.local.submit(humanId, move);
-  runtime.log.push({ type: "bid", player: humanId, quantity: opts.quantity, face: opts.face, at: Date.now() });
+  runtime.log.push({ type: "bid", player: humanId, quantity: opts.quantity, face: opts.face, at: Date.now(), tx });
   await advanceAi(runtime);
 }
 
@@ -163,9 +163,9 @@ export async function submitHumanChallenge(runtime: LiarsMatchRuntime): Promise<
     throw new LiarsApiError(400, "nothing to challenge — no standing bid yet");
   }
   const humanId = runtime.roster[runtime.humanIdx]!.id;
-  await runtime.client.challenge(runtime.refereeId, { player: runtime.humanIdx });
+  const tx = await runtime.client.challenge(runtime.refereeId, { player: runtime.humanIdx });
   runtime.local.submit(humanId, { type: "challenge" });
-  runtime.log.push({ type: "challenge", player: humanId, at: Date.now() });
+  runtime.log.push({ type: "challenge", player: humanId, at: Date.now(), tx });
   await resolveReveal(runtime);
 }
 
@@ -194,15 +194,15 @@ async function advanceAi(runtime: LiarsMatchRuntime): Promise<void> {
     const move = chooseMove(runtime.local.view(aiId), `${runtime.seed}:bid${state.bid_history.length}:${aiId}`);
     runtime.local.submit(aiId, move);
     if (move.type === "bid") {
-      await runtime.client.bid(runtime.refereeId, {
+      const tx = await runtime.client.bid(runtime.refereeId, {
         player: state.turn,
         quantity: move.quantity as number,
         face: move.face as number,
       });
-      runtime.log.push({ type: "bid", player: aiId, quantity: move.quantity as number, face: move.face as number, at: Date.now() });
+      runtime.log.push({ type: "bid", player: aiId, quantity: move.quantity as number, face: move.face as number, at: Date.now(), tx });
     } else {
-      await runtime.client.challenge(runtime.refereeId, { player: state.turn });
-      runtime.log.push({ type: "challenge", player: aiId, at: Date.now() });
+      const tx = await runtime.client.challenge(runtime.refereeId, { player: state.turn });
+      runtime.log.push({ type: "challenge", player: aiId, at: Date.now(), tx });
       await resolveReveal(runtime);
       return;
     }
@@ -221,12 +221,12 @@ async function resolveReveal(runtime: LiarsMatchRuntime): Promise<void> {
   for (let i = 0; i < runtime.roster.length; i++) {
     const id = runtime.roster[i]!.id;
     if (state.players[i]?.revealed_dice.length) continue; // already revealed
-    await runtime.client.revealDice(runtime.refereeId, {
+    const tx = await runtime.client.revealDice(runtime.refereeId, {
       player: i,
       dice: runtime.diceByPlayer[id]!,
       saltsHex: runtime.saltsByPlayer[id]!.map(toBe32Hex),
     });
-    runtime.log.push({ type: "reveal", player: id, dice: runtime.diceByPlayer[id]!, at: Date.now() });
+    runtime.log.push({ type: "reveal", player: id, dice: runtime.diceByPlayer[id]!, at: Date.now(), tx });
   }
   runtime.lastChainState = await runtime.client.gameState(runtime.refereeId);
   saveLiarsMatch(runtime);

@@ -119,6 +119,14 @@ export function toBe32Hex(value: bigint): string {
   return hex.padStart(64, '0')
 }
 
+
+/** Extracts the submitted transaction hash from the CLI's stderr (it prints
+ *  a stellar.expert link for every sent tx). Null when none was printed. */
+function extractTxHash(stderr: string): string | null {
+  const m = /explorer\/testnet\/tx\/([0-9a-f]{64})/i.exec(stderr)
+  return m ? m[1]! : null
+}
+
 export class CliRefereeClient {
   private readonly network: string
   private readonly source: string
@@ -164,54 +172,59 @@ export class CliRefereeClient {
     return stdout.trim()
   }
 
-  async commitSeedNonce(refereeId: string, opts: { player: number; commitmentHex: string }): Promise<void> {
-    await this.invoke(
+  async commitSeedNonce(refereeId: string, opts: { player: number; commitmentHex: string }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['commit_seed_nonce', '--player', String(opts.player), '--nonce_commitment', stripHexPrefix(opts.commitmentHex)],
       opts.player,
     )
+    return res.txHash
   }
 
-  async revealSeedNonce(refereeId: string, opts: { player: number; nonceHex: string }): Promise<void> {
-    await this.invoke(
+  async revealSeedNonce(refereeId: string, opts: { player: number; nonceHex: string }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['reveal_seed_nonce', '--player', String(opts.player), '--nonce', stripHexPrefix(opts.nonceHex)],
       opts.player,
     )
+    return res.txHash
   }
 
   /** Submits the 15 shuffle-proven deck leaves + the `valid_shuffle` proof (permissionless — the proof is the trust anchor). */
-  async submitShuffle(refereeId: string, opts: { leavesHex: string[]; proofHex: string }): Promise<void> {
-    await this.invoke(refereeId, [
+  async submitShuffle(refereeId: string, opts: { leavesHex: string[]; proofHex: string }): Promise<string | null> {
+    const res = await this.invoke(refereeId, [
       'submit_shuffle',
       '--leaves',
       JSON.stringify(opts.leavesHex.map(stripHexPrefix)),
       '--proof',
       stripHexPrefix(opts.proofHex),
     ])
+    return res.txHash
   }
 
-  async claim(refereeId: string, opts: { player: number; character: number }): Promise<void> {
-    await this.invoke(
+  async claim(refereeId: string, opts: { player: number; character: number }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['claim', '--player', String(opts.player), '--character', String(opts.character)],
       opts.player,
     )
+    return res.txHash
   }
 
-  async challenge(refereeId: string, opts: { challenger: number; target: number }): Promise<void> {
-    await this.invoke(
+  async challenge(refereeId: string, opts: { challenger: number; target: number }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['challenge', '--challenger', String(opts.challenger), '--target', String(opts.target)],
       opts.challenger,
     )
+    return res.txHash
   }
 
   async proveHold(
     refereeId: string,
     opts: { target: number; claimed: number; proofHex: string },
-  ): Promise<void> {
-    await this.invoke(
+  ): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       [
         'prove_hold',
@@ -224,13 +237,14 @@ export class CliRefereeClient {
       ],
       opts.target,
     )
+    return res.txHash
   }
 
   async revealCard(
     refereeId: string,
     opts: { player: number; slot: number; card: number; saltHex: string },
-  ): Promise<void> {
-    await this.invoke(
+  ): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       [
         'reveal_card',
@@ -245,6 +259,7 @@ export class CliRefereeClient {
       ],
       opts.player,
     )
+    return res.txHash
   }
 
   async gameState(refereeId: string): Promise<ChainGameState> {
@@ -267,7 +282,7 @@ export class CliRefereeClient {
       '--',
       ...ctorArgs,
     ]
-    return this.execWithRetry(args)
+    return (await this.execWithRetry(args)).stdout
   }
 
   /**
@@ -275,7 +290,7 @@ export class CliRefereeClient {
    * seat's identity (`sourceForSeat[seat]`, falling back to `source`) so
    * the referee's per-seat `require_auth()` is satisfied.
    */
-  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<string> {
+  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<{ stdout: string; txHash: string | null }> {
     const source = seat !== undefined ? (this.sourceForSeat[seat] ?? this.source) : this.source
     const args = [
       'contract',
@@ -307,18 +322,18 @@ export class CliRefereeClient {
       '--',
       ...methodArgs,
     ]
-    return this.execWithRetry(args)
+    return (await this.execWithRetry(args)).stdout
   }
 
-  private async execWithRetry(args: string[]): Promise<string> {
+  private async execWithRetry(args: string[]): Promise<{ stdout: string; txHash: string | null }> {
     let lastError: unknown
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       try {
-        const { stdout } = await execFileAsync(this.stellarBin, args, {
+        const { stdout, stderr } = await execFileAsync(this.stellarBin, args, {
           env: toolEnv(),
           maxBuffer: 32 * 1024 * 1024,
         })
-        return stdout
+        return { stdout, txHash: extractTxHash(stderr ?? '') }
       } catch (err) {
         const stderr = typeof err === 'object' && err !== null && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : String(err)
         const cliError = new RefereeCliError(args, stderr)

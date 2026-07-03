@@ -18,7 +18,11 @@ vi.mock("node:child_process", () => {
     // returns the "assembled" XDR; send returns a tx result blob.
     if (args.includes("--build-only")) return { stdout: "RAW_XDR\n", stderr: "" };
     if (args[1] === "simulate") return { stdout: "ASSEMBLED_XDR\n", stderr: "" };
-    return { stdout: "SENT\n", stderr: "" };
+    // The CLI prints the submitted tx's explorer link to STDERR.
+    return {
+      stdout: "SENT\n",
+      stderr: "🔗 https://stellar.expert/explorer/testnet/tx/" + "ab".repeat(32) + "\n",
+    };
   };
   return { execFile };
 });
@@ -61,10 +65,10 @@ describe("buildUnsignedInvokeXdr", () => {
 });
 
 describe("sendSignedTx", () => {
-  it("sends the signed envelope via `stellar tx send`", async () => {
+  it("sends the signed envelope via `stellar tx send` and returns the tx hash", async () => {
     execCalls.length = 0;
     const out = await sendSignedTx("testnet", "SIGNED_XDR");
-    expect(out).toBe("SENT");
+    expect(out).toBe("ab".repeat(32));
     const send = execCalls[0]!.args;
     expect(send.slice(0, 2)).toEqual(["tx", "send"]);
     expect(send.at(-1)).toBe("SIGNED_XDR");

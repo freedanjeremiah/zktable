@@ -5,9 +5,20 @@ import type { Match, PlayerId } from "@zktable/core";
 import type { CardProver, ChainGameState, CliRefereeClient, Hand, Roster } from "@zktable/coup-lite";
 
 export type CoupMatchEvent =
-  | { type: "deal"; at: number }
-  | { type: "claim"; player: PlayerId; character: number; at: number }
-  | { type: "challenge"; challenger: PlayerId; target: PlayerId; claimWasTrue: boolean; loser: PlayerId; at: number }
+  | { type: "deal"; at: number; tx?: string | null }
+  | { type: "claim"; player: PlayerId; character: number; at: number; tx?: string | null }
+  | {
+      type: "challenge";
+      challenger: PlayerId;
+      target: PlayerId;
+      claimWasTrue: boolean;
+      loser: PlayerId;
+      at: number;
+      /** The challenge tx; a truthful claim adds the card_membership proof tx. */
+      tx?: string | null;
+      proveTx?: string | null;
+      revealTx?: string | null;
+    }
   | { type: "error"; message: string; at: number };
 
 export type CoupMatchRuntime = {

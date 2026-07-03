@@ -28,9 +28,9 @@ export type ProofStatus = {
 export type MatchEvent =
   // `to` is null when the position is browser-held (human Phantom, M8.5) —
   // the server never learns it, and consumers must not treat it as a node.
-  | { type: "hidden_move"; round: number; player: PlayerId; to: number | null; ticket: number; txOk: boolean; at: number }
-  | { type: "public_move"; round: number; player: PlayerId; to: number; ticket: number; txOk: boolean; at: number }
-  | { type: "reveal"; round: number; player: PlayerId; node: number; at: number }
+  | { type: "hidden_move"; round: number; player: PlayerId; to: number | null; ticket: number; txOk: boolean; at: number; tx?: string | null }
+  | { type: "public_move"; round: number; player: PlayerId; to: number; ticket: number; txOk: boolean; at: number; tx?: string | null }
+  | { type: "reveal"; round: number; player: PlayerId; node: number; at: number; tx?: string | null }
   | { type: "error"; message: string; at: number };
 
 /** Who may act for a human seat: the browser session holding `token`. AI seats have no binding. */

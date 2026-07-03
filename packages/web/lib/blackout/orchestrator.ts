@@ -390,7 +390,7 @@ export async function submitPhantomMove(
     throw new BlackoutApiError(409, `it is not the Phantom's turn (current: ${state.current_player})`);
   }
   try {
-    await runtime.client.submitHiddenMove(runtime.refereeId, {
+    const tx = await runtime.client.submitHiddenMove(runtime.refereeId, {
       player: idx,
       cNewHex: opts.cNewHex,
       ticket: opts.ticket,
@@ -405,6 +405,7 @@ export async function submitPhantomMove(
       ticket: opts.ticket,
       txOk: true,
       at: Date.now(),
+      tx,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -427,12 +428,12 @@ export async function submitPhantomReveal(
   // round is only needed for the log entry, so avoid a dedicated read.
   const round =
     runtime.lastChainState?.round ?? (await runtime.client.gameState(runtime.refereeId)).round;
-  await runtime.client.reveal(runtime.refereeId, {
+  const revealTx = await runtime.client.reveal(runtime.refereeId, {
     player: phantomSeatIndex(runtime),
     node: opts.node,
     saltHex: opts.saltHex,
   });
-  runtime.log.push({ type: "reveal", round, player: "phantom", node: opts.node, at: Date.now() });
+  runtime.log.push({ type: "reveal", round, player: "phantom", node: opts.node, at: Date.now(), tx: revealTx });
   await saveMatch(runtime);
 }
 
@@ -448,8 +449,8 @@ export async function submitHumanMove(
   opts: { player: number; node: number; ticket: number; sessionToken?: string },
 ): Promise<void> {
   const { playerId, state } = await validateHumanMove(runtime, opts);
-  await runtime.client.submitPublicMove(runtime.refereeId, { player: opts.player, node: opts.node, ticket: opts.ticket });
-  recordHumanMove(runtime, playerId, state.round, opts);
+  const tx = await runtime.client.submitPublicMove(runtime.refereeId, { player: opts.player, node: opts.node, ticket: opts.ticket });
+  recordHumanMove(runtime, playerId, state.round, { ...opts, tx });
   await saveMatch(runtime);
 }
 
@@ -499,7 +500,7 @@ function recordHumanMove(
   runtime: MatchRuntime,
   playerId: PlayerId,
   round: number,
-  opts: { node: number; ticket: number },
+  opts: { node: number; ticket: number; tx?: string | null },
 ): void {
   // No engine mirror to advance in human-Phantom matches (see legal-moves.ts).
   if (!runtime.phantomHuman) {
@@ -513,6 +514,7 @@ function recordHumanMove(
     ticket: opts.ticket,
     txOk: true,
     at: Date.now(),
+    tx: opts.tx ?? null,
   });
 }
 
@@ -559,9 +561,9 @@ export async function submitSignedHumanMove(
     );
   }
   const { playerId, state } = await validateHumanMove(runtime, { ...pending, sessionToken: opts.sessionToken });
-  await sendSignedTx(runtime.network, opts.signedXdr);
+  const tx = await sendSignedTx(runtime.network, opts.signedXdr);
   runtime.pendingWalletMove = undefined;
-  recordHumanMove(runtime, playerId, state.round, pending);
+  recordHumanMove(runtime, playerId, state.round, { ...pending, tx });
   await saveMatch(runtime);
 }
 
@@ -627,7 +629,7 @@ export async function advanceAiTurns(
           saltOld: runtime.phantom.salt,
           saltNew: newSalt,
         });
-        await runtime.client.submitHiddenMove(runtime.refereeId, {
+        const tx = await runtime.client.submitHiddenMove(runtime.refereeId, {
           player: idx,
           cNewHex: proof.cNew,
           ticket: move.ticket as number,
@@ -645,6 +647,7 @@ export async function advanceAiTurns(
           ticket: move.ticket as number,
           txOk: true,
           at: Date.now(),
+          tx,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -659,16 +662,16 @@ export async function advanceAiTurns(
 
       const revealRounds = runtime.config.revealRounds ?? DEFAULT_REVEAL_ROUNDS;
       if (revealRounds.includes(round)) {
-        await runtime.client.reveal(runtime.refereeId, {
+        const revealTx = await runtime.client.reveal(runtime.refereeId, {
           player: idx,
           node: runtime.phantom.pos,
           saltHex: toBe32Hex(runtime.phantom.salt),
         });
-        runtime.log.push({ type: "reveal", round, player: currentId, node: runtime.phantom.pos, at: Date.now() });
+        runtime.log.push({ type: "reveal", round, player: currentId, node: runtime.phantom.pos, at: Date.now(), tx: revealTx });
         await saveMatch(runtime);
       }
     } else {
-      await runtime.client.submitPublicMove(runtime.refereeId, {
+      const tx = await runtime.client.submitPublicMove(runtime.refereeId, {
         player: idx,
         node: move.to as number,
         ticket: move.ticket as number,
@@ -682,6 +685,7 @@ export async function advanceAiTurns(
         ticket: move.ticket as number,
         txOk: true,
         at: Date.now(),
+        tx,
       });
       // Persist each landed on-chain move: a later-iteration failure must
       // not leave the durable record behind the chain.

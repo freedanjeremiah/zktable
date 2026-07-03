@@ -102,6 +102,14 @@ export function toBe32Hex(value: bigint): string {
   return hex.padStart(64, '0')
 }
 
+
+/** Extracts the submitted transaction hash from the CLI's stderr (it prints
+ *  a stellar.expert link for every sent tx). Null when none was printed. */
+function extractTxHash(stderr: string): string | null {
+  const m = /explorer\/testnet\/tx\/([0-9a-f]{64})/i.exec(stderr)
+  return m ? m[1]! : null
+}
+
 export class CliRefereeClient {
   private readonly network: string
   private readonly source: string
@@ -147,7 +155,7 @@ export class CliRefereeClient {
     refereeId: string,
     opts: { addr: string; role: Role; ticketTaxi: number; ticketBus: number; ticketRail: number },
   ): Promise<number> {
-    const stdout = await this.invoke(refereeId, [
+    const { stdout } = await this.invoke(refereeId, [
       'join',
       '--addr',
       opts.addr,
@@ -163,31 +171,34 @@ export class CliRefereeClient {
     return Number(stdout.trim())
   }
 
-  async setHiddenStart(refereeId: string, player: number, commitmentHex: string): Promise<void> {
-    await this.invoke(
+  async setHiddenStart(refereeId: string, player: number, commitmentHex: string): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['set_hidden_start', '--player', String(player), '--commitment', stripHexPrefix(commitmentHex)],
       player,
     )
+    return res.txHash
   }
 
-  async setPublicStart(refereeId: string, player: number, node: number): Promise<void> {
-    await this.invoke(
+  async setPublicStart(refereeId: string, player: number, node: number): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       ['set_public_start', '--player', String(player), '--node', String(node)],
       player,
     )
+    return res.txHash
   }
 
-  async start(refereeId: string): Promise<void> {
-    await this.invoke(refereeId, ['start'])
+  async start(refereeId: string): Promise<string | null> {
+    const res = await this.invoke(refereeId, ['start'])
+    return res.txHash
   }
 
   async submitHiddenMove(
     refereeId: string,
     opts: { player: number; cNewHex: string; ticket: number; proofHex: string },
-  ): Promise<void> {
-    await this.invoke(
+  ): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       [
         'submit_hidden_move',
@@ -202,10 +213,11 @@ export class CliRefereeClient {
       ],
       opts.player,
     )
+    return res.txHash
   }
 
-  async submitPublicMove(refereeId: string, opts: { player: number; node: number; ticket: number }): Promise<void> {
-    await this.invoke(
+  async submitPublicMove(refereeId: string, opts: { player: number; node: number; ticket: number }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       [
         'submit_public_move',
@@ -218,10 +230,11 @@ export class CliRefereeClient {
       ],
       opts.player,
     )
+    return res.txHash
   }
 
-  async reveal(refereeId: string, opts: { player: number; node: number; saltHex: string }): Promise<void> {
-    await this.invoke(
+  async reveal(refereeId: string, opts: { player: number; node: number; saltHex: string }): Promise<string | null> {
+    const res = await this.invoke(
       refereeId,
       [
         'reveal',
@@ -234,6 +247,7 @@ export class CliRefereeClient {
       ],
       opts.player,
     )
+    return res.txHash
   }
 
   async gameState(refereeId: string): Promise<ChainGameState> {
@@ -256,7 +270,7 @@ export class CliRefereeClient {
       '--',
       ...ctorArgs,
     ]
-    return this.execWithRetry(args)
+    return (await this.execWithRetry(args)).stdout
   }
 
   /**
@@ -264,7 +278,7 @@ export class CliRefereeClient {
    * seat's identity (`sourceForSeat[seat]`, falling back to `source`) so
    * the referee's per-seat `require_auth()` is satisfied.
    */
-  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<string> {
+  private async invoke(contractId: string, methodArgs: string[], seat?: number): Promise<{ stdout: string; txHash: string | null }> {
     const source = seat !== undefined ? (this.sourceForSeat[seat] ?? this.source) : this.source
     const args = [
       'contract',
@@ -296,18 +310,18 @@ export class CliRefereeClient {
       '--',
       ...methodArgs,
     ]
-    return this.execWithRetry(args)
+    return (await this.execWithRetry(args)).stdout
   }
 
-  private async execWithRetry(args: string[]): Promise<string> {
+  private async execWithRetry(args: string[]): Promise<{ stdout: string; txHash: string | null }> {
     let lastError: unknown
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       try {
-        const { stdout } = await execFileAsync(this.stellarBin, args, {
+        const { stdout, stderr } = await execFileAsync(this.stellarBin, args, {
           env: toolEnv(),
           maxBuffer: 32 * 1024 * 1024,
         })
-        return stdout
+        return { stdout, txHash: extractTxHash(stderr ?? '') }
       } catch (err) {
         const stderr = typeof err === 'object' && err !== null && 'stderr' in err ? String((err as { stderr: unknown }).stderr) : String(err)
         const cliError = new RefereeCliError(args, stderr)

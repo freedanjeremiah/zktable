@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateProgress } from "@/components/board/create-progress";
+import { TxLink } from "@/components/proof/tx-link";
 import type { CoupDto } from "@/lib/coup-lite/dto";
 import { cn } from "@/lib/utils";
 
@@ -217,11 +218,13 @@ export default function CoupLitePage() {
               <ul className="flex flex-col gap-1.5">
                 {[...dto.log].reverse().map((e, i) => (
                   <li key={i} className="text-fg-muted">
-                    {e.type === "deal" && <span>provably-fair deal (valid_shuffle verified)</span>}
-                    {e.type === "claim" && <span className="text-fg">{e.player} claims {name(e.character)}</span>}
+                    {e.type === "deal" && <span>provably-fair deal (valid_shuffle verified) <TxLink tx={e.tx} /></span>}
+                    {e.type === "claim" && <span className="text-fg">{e.player} claims {name(e.character)} <TxLink tx={e.tx} /></span>}
                     {e.type === "challenge" && (
                       <span className="font-bold text-black">
-                        {e.challenger} challenged {e.target} — {e.claimWasTrue ? "TRUE (ZK-proven)" : "BLUFF"}; {e.loser} lost influence
+                        {e.challenger} challenged {e.target} <TxLink tx={e.tx} /> —{" "}
+                        {e.claimWasTrue ? <>TRUE (ZK-proven <TxLink tx={e.proveTx} />)</> : "BLUFF"}; {e.loser} lost
+                        influence <TxLink tx={e.revealTx} />
                       </span>
                     )}
                     {e.type === "error" && <span className="text-danger">{e.message}</span>}
