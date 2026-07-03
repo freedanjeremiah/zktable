@@ -25,8 +25,11 @@
 //! player 2 (3-player tests only): cards [4, 0], salts [401, 402].
 
 use soroban_env_host::DiagnosticLevel;
-use soroban_sdk::{testutils::Address as _, Address, Bytes, BytesN, Env, Vec as SorobanVec};
-use zktable_coup_referee::{CoupRefereeContract, Error, GameState, Phase};
+use soroban_sdk::{
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    Address, Bytes, BytesN, Env, IntoVal, Vec as SorobanVec,
+};
+use zktable_coup_referee::{CoupRefereeContract, CoupRefereeContractClient, Error, GameState, Phase};
 use zktable_verifier::UltraHonkVerifierContract;
 
 const VK_BIN: &[u8] = include_bytes!("fixtures/card_membership_vk");
@@ -86,6 +89,9 @@ fn hand_commitments(env: &Env, cards: [u32; 2], salts: [u32; 2]) -> SorobanVec<B
 fn setup_env() -> Env {
     let env = Env::default();
     env.cost_estimate().budget().reset_unlimited();
+    // These tests exercise game logic, not auth; per-seat require_auth is
+    // covered by the dedicated auth test at the bottom of this file.
+    env.mock_all_auths();
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
     env
 }
@@ -95,8 +101,16 @@ fn register_verifier(env: &Env) -> Address {
     env.register(UltraHonkVerifierContract, (vk_bytes,))
 }
 
+fn seat_addresses(env: &Env, n_players: u32) -> SorobanVec<Address> {
+    let mut v = SorobanVec::new(env);
+    for _ in 0..n_players {
+        v.push_back(Address::generate(env));
+    }
+    v
+}
+
 fn register_referee(env: &Env, verifier: Address, n_players: u32) -> Address {
-    env.register(CoupRefereeContract, (verifier, n_players))
+    env.register(CoupRefereeContract, (verifier, seat_addresses(env, n_players)))
 }
 
 fn game_state(env: &Env, referee_id: &Address) -> GameState {
@@ -409,7 +423,10 @@ fn constructor_rejects_unsupported_player_count() {
         let env = Env::default();
         env.cost_estimate().budget().reset_unlimited();
         let verifier = Address::generate(&env);
-        let _ = env.register(CoupRefereeContract, (verifier, 1u32));
+        // A single seat address — the referee requires 2..=4.
+        let mut one_seat = SorobanVec::new(&env);
+        one_seat.push_back(Address::generate(&env));
+        let _ = env.register(CoupRefereeContract, (verifier, one_seat));
     });
     let panic = result.expect_err("expected constructor to panic");
     let msg = panic.downcast_ref::<String>().map(|s| s.as_str()).unwrap_or("");
@@ -417,4 +434,58 @@ fn constructor_rejects_unsupported_player_count() {
         msg.contains("Error(Contract, #2)"),
         "constructor should fail with UnsupportedConfig (#2), got: {msg}"
     );
+}
+
+// ---------- 8. auth: a signer who doesn't own the seat is rejected ----------
+
+#[test]
+fn wrong_signer_cannot_act_for_a_seat() {
+    let env = Env::default();
+    env.cost_estimate().budget().reset_unlimited();
+    let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
+    let verifier_id = register_verifier(&env);
+
+    let seat0 = Address::generate(&env);
+    let seat1 = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    let mut seats = SorobanVec::new(&env);
+    seats.push_back(seat0.clone());
+    seats.push_back(seat1.clone());
+    let referee_id = env.register(CoupRefereeContract, (verifier_id, seats));
+    let client = CoupRefereeContractClient::new(&env, &referee_id);
+
+    // Deal both hands with each seat's own auth so the game reaches Playing.
+    env.mock_all_auths();
+    client.deal(&0, &hand_commitments(&env, P0_CARDS, P0_SALTS));
+    client.deal(&1, &hand_commitments(&env, P1_CARDS, P1_SALTS));
+
+    // Seat 0's turn. The attacker signs seat 0's claim: require_auth(seat0)
+    // must abort the invocation.
+    env.set_auths(&[]);
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &referee_id,
+            fn_name: "claim",
+            args: (0u32, 0u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let res = client.try_claim(&0, &0);
+    assert!(res.is_err(), "attacker-signed claim must be rejected");
+
+    // Seat 0's own signature works.
+    env.set_auths(&[]);
+    env.mock_auths(&[MockAuth {
+        address: &seat0,
+        invoke: &MockAuthInvoke {
+            contract: &referee_id,
+            fn_name: "claim",
+            args: (0u32, 0u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.claim(&0, &0);
+    let state = game_state(&env, &referee_id);
+    assert_eq!(state.last_claim_player, Some(0));
 }

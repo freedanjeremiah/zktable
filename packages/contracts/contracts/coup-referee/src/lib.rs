@@ -121,6 +121,7 @@ pub enum Phase {
 #[contracttype]
 #[derive(Clone)]
 pub struct PlayerData {
+    pub address: Address,
     pub commitments: Vec<BytesN<32>>, // len 2 once dealt; empty == not yet dealt
     pub dead: Vec<bool>,              // len 2 once dealt; dead[i] == slot i revealed/discarded
     pub influence: u32,
@@ -257,6 +258,16 @@ fn check_turn(env: &Env, player: u32) -> Result<(), Error> {
     Ok(())
 }
 
+/// Loads the seat and requires its owner's authorization. Every per-seat
+/// entry point calls this for the ACTING seat (claimer, challenger,
+/// prover, revealer) before touching state — seat addresses are fixed at
+/// construction (see spec M8.1).
+fn require_seat_auth(players: &Vec<PlayerData>, player: u32) -> Result<PlayerData, Error> {
+    let p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+    p.address.require_auth();
+    Ok(p)
+}
+
 fn first_alive(players: &Vec<PlayerData>) -> u32 {
     for i in 0..players.len() {
         if players.get(i).unwrap().alive {
@@ -304,13 +315,16 @@ fn get_opt_u32(env: &Env, key: &Symbol) -> Option<u32> {
 
 #[contractimpl]
 impl CoupRefereeContract {
-    /// Set config once at deploy. `n_players` must be in [2, 4] (see module
-    /// doc -- unlike the liars-dice referee's hard 2-player lock, elimination
-    /// by influence loss is sound for any starting count >= 2).
-    pub fn __constructor(env: Env, verifier: Address, n_players: u32) -> Result<(), Error> {
+    /// Set config once at deploy. `players` is the per-seat owner address
+    /// vector (seat i is owned — and its moves signed — by `players[i]`);
+    /// its length must be in [2, 4] (see module doc -- unlike the liars-dice
+    /// referee's hard 2-player lock, elimination by influence loss is sound
+    /// for any starting count >= 2).
+    pub fn __constructor(env: Env, verifier: Address, players: Vec<Address>) -> Result<(), Error> {
         if env.storage().instance().has(&key_verifier()) {
             return Err(Error::AlreadyInitialized);
         }
+        let n_players = players.len();
         if n_players < MIN_PLAYERS || n_players > MAX_PLAYERS {
             return Err(Error::UnsupportedConfig);
         }
@@ -318,16 +332,17 @@ impl CoupRefereeContract {
         env.storage().instance().set(&key_nplayers(), &n_players);
         set_phase(&env, Phase::Deal);
 
-        let mut players: Vec<PlayerData> = Vec::new(&env);
-        for _ in 0..n_players {
-            players.push_back(PlayerData {
+        let mut roster: Vec<PlayerData> = Vec::new(&env);
+        for i in 0..n_players {
+            roster.push_back(PlayerData {
+                address: players.get(i).unwrap(),
                 commitments: Vec::new(&env),
                 dead: Vec::new(&env),
                 influence: START_INFLUENCE,
                 alive: true,
             });
         }
-        set_players(&env, &players);
+        set_players(&env, &roster);
         env.storage().instance().set(&key_turn(), &0u32);
         Ok(())
     }
@@ -344,7 +359,7 @@ impl CoupRefereeContract {
             return Err(Error::BadArrayLength);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if !p.commitments.is_empty() {
             return Err(Error::AlreadyDealt);
         }
@@ -376,7 +391,7 @@ impl CoupRefereeContract {
         }
         check_turn(&env, player)?;
         let players = get_players(&env);
-        let p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let p = require_seat_auth(&players, player)?;
         if !p.alive {
             return Err(Error::NotAlive);
         }
@@ -404,7 +419,7 @@ impl CoupRefereeContract {
             return Err(Error::CannotChallengeSelf);
         }
         let players = get_players(&env);
-        let ch = players.get(challenger).ok_or(Error::BadPlayerIndex)?;
+        let ch = require_seat_auth(&players, challenger)?;
         if !ch.alive {
             return Err(Error::NotAlive);
         }
@@ -440,7 +455,7 @@ impl CoupRefereeContract {
             return Err(Error::ClaimMismatch);
         }
         let players = get_players(&env);
-        let p = players.get(target).ok_or(Error::BadPlayerIndex)?;
+        let p = require_seat_auth(&players, target)?;
 
         let mut public_inputs = Bytes::new(&env);
         public_inputs.append(&Bytes::from_array(&env, &be32(claimed)));
@@ -481,7 +496,7 @@ impl CoupRefereeContract {
             return Err(Error::BadSlotIndex);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if p.dead.get(slot).unwrap_or(true) {
             return Err(Error::SlotAlreadyRevealed);
         }
