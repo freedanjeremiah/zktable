@@ -76,6 +76,8 @@ function buildRuntime(): MatchRuntime {
     log: [],
     seats: { investigator1: { open: false, token: "tok-1" }, investigator2: { open: true } },
     open: true,
+    phantomHuman: false,
+    pendingPhantomStart: false,
   };
 
   // Play the Phantom's opening hidden move + investigator1's public move,

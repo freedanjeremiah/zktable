@@ -2,7 +2,7 @@
   "name": "@zktable/web",
   "version": "0.1.0",
   "private": true,
-  "description": "zkTable arcade — Next.js web shell (landing, lobby, wallet connect)",
+  "description": "zkTable arcade \u2014 Next.js web shell (landing, lobby, wallet connect)",
   "type": "module",
   "scripts": {
     "dev": "next dev --webpack",
@@ -10,7 +10,10 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "ensure-circuit-assets": "node scripts/copy-circuit-assets.mjs",
+    "predev": "node scripts/copy-circuit-assets.mjs",
+    "prebuild": "node scripts/copy-circuit-assets.mjs"
   },
   "dependencies": {
     "@stellar/freighter-api": "^6.0.1",
@@ -25,7 +28,8 @@
     "next": "^16.2.10",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "@zktable/prover-web": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.2",

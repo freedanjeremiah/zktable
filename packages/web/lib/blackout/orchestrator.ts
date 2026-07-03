@@ -40,6 +40,7 @@ import type { MatchRuntime } from "./match-store";
 import { getMatch, saveMatch } from "./match-store";
 import { pickStartPositions } from "./start-positions";
 import { buildUnsignedInvokeXdr, sendSignedTx } from "./prepare";
+import { legalPublicMovesFromChain } from "./legal-moves";
 
 export type CreateMatchOptions = {
   /** Total investigator seats. Defaults to 3 (one human + two AI). */
@@ -58,6 +59,10 @@ export type CreateMatchOptions = {
    * `start()` is deferred until the signed start lands.
    */
   walletAddress?: string;
+  /** 'human' seats the PHANTOM as a browser-proving human (M8.5): the
+   * server never learns the hidden position — the browser generates the
+   * start commitment and every move proof locally. Default 'ai'. */
+  phantomSeat?: "ai" | "human";
   /** List the match in the open lobby with its human seat unclaimed. */
   open?: boolean;
   /** The creating browser's session token — claims the human seat unless `open`. */
@@ -103,6 +108,11 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
     0,
     investigatorCount,
   );
+
+  const phantomHuman = opts.phantomSeat === "human";
+  if (phantomHuman && opts.walletAddress) {
+    throw new BlackoutApiError(400, "phantomSeat: 'human' cannot be combined with walletAddress (yet)");
+  }
 
   const roster = buildRoster(investigatorCount);
 
@@ -165,10 +175,16 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
     startPositions[p.id] = investigatorStarts[i]!;
   });
 
-  const phantomSalt = randomSalt();
-  const initialCommitment = await graph.commit(phantomStart, phantomSalt);
-  log(`setting Phantom hidden start (node ${phantomStart})…`);
-  await client.setHiddenStart(refereeContractId, playerIndex.get("phantom")!, initialCommitment);
+  // Human Phantom (M8.5): the BROWSER generates position + salt and posts
+  // only the commitment (phantom-start route); the server holds no secret.
+  let phantomSecret: MatchRuntime["phantom"] = null;
+  if (!phantomHuman) {
+    const phantomSalt = randomSalt();
+    phantomSecret = { pos: phantomStart, salt: phantomSalt };
+    const initialCommitment = await graph.commit(phantomStart, phantomSalt);
+    log(`setting Phantom hidden start (node ${phantomStart})…`);
+    await client.setHiddenStart(refereeContractId, playerIndex.get("phantom")!, initialCommitment);
+  }
 
   // The wallet-bound seat's set_public_start must be signed by the wallet
   // (require_auth), so the server can only PREPARE it; start() is deferred
@@ -195,7 +211,7 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
     await client.setPublicStart(refereeContractId, playerIndex.get(p.id)!, node);
   }
 
-  if (!pendingStart) {
+  if (!pendingStart && !phantomHuman) {
     log("starting the match…");
     await client.start(refereeContractId);
   }
@@ -213,7 +229,7 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
   // investigator seats — so with the default (investigators=3,
   // aiInvestigators=2) `investigator1` is the human seat.
   const agents = new Map<PlayerId, Agent>();
-  agents.set("phantom", buildAgent(opts.model, "phantom"));
+  if (!phantomHuman) agents.set("phantom", buildAgent(opts.model, "phantom"));
   const aiInvestigatorEntries = investigatorEntries.slice(investigatorEntries.length - aiInvestigatorCount);
   for (const p of aiInvestigatorEntries) {
     agents.set(p.id, buildAgent(opts.model, "investigator"));
@@ -239,7 +255,7 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
     roster,
     playerIndex,
     indexToPlayer,
-    phantom: { pos: phantomStart, salt: phantomSalt },
+    phantom: phantomSecret,
     agents,
     model: opts.model,
     config,
@@ -253,6 +269,8 @@ export async function createBlackoutMatch(opts: CreateMatchOptions = {}): Promis
     pendingStart,
     seats,
     open: opts.open ?? false,
+    phantomHuman,
+    pendingPhantomStart: phantomHuman,
   };
   await saveMatch(runtime);
 
@@ -293,7 +311,117 @@ export async function requireMatch(matchId: string): Promise<MatchRuntime> {
 export async function fetchDto(runtime: MatchRuntime): Promise<MatchDto> {
   const state = await runtime.client.gameState(runtime.refereeId);
   runtime.lastChainState = state;
-  return toDto(state, runtime);
+  if (!runtime.phantomHuman) return toDto(state, runtime);
+  // Human-Phantom matches have no engine mirror: investigator legality comes
+  // from the public graph + chain state; the Phantom computes its own
+  // legality in the browser (legalMoves stays undefined for that seat).
+  return toDto(state, {
+    ...runtime,
+    legalMovesFor: (playerId) => {
+      const idx = runtime.playerIndex.get(playerId);
+      const entry = runtime.roster.find((p) => p.id === playerId);
+      if (idx === undefined || entry?.role !== "investigator") return undefined;
+      return legalPublicMovesFromChain(state, idx);
+    },
+  });
+}
+
+/** The Phantom roster id + seat index for a human-Phantom match. */
+function phantomSeatIndex(runtime: MatchRuntime): number {
+  const idx = runtime.playerIndex.get("phantom");
+  if (idx === undefined) throw new BlackoutApiError(500, "match has no phantom seat");
+  return idx;
+}
+
+function assertPhantomSession(runtime: MatchRuntime, sessionToken: string | undefined): void {
+  if (!runtime.phantomHuman) {
+    throw new BlackoutApiError(400, "this match's Phantom is AI-controlled");
+  }
+  const seat = runtime.seats["phantom"];
+  if (seat?.token && seat.token !== sessionToken) {
+    throw new BlackoutApiError(403, 'seat "phantom" belongs to a different session');
+  }
+}
+
+/**
+ * Lands the browser-generated hidden-start commitment and starts the match
+ * (M8.5). The commitment is the ONLY thing the server ever sees — position
+ * and salt stay in the browser.
+ */
+export async function submitPhantomStart(
+  runtime: MatchRuntime,
+  opts: { commitmentHex: string; sessionToken?: string },
+): Promise<void> {
+  assertPhantomSession(runtime, opts.sessionToken);
+  if (!runtime.pendingPhantomStart) {
+    throw new BlackoutApiError(409, "this match is not waiting for a Phantom start commitment");
+  }
+  await runtime.client.setHiddenStart(runtime.refereeId, phantomSeatIndex(runtime), opts.commitmentHex);
+  await runtime.client.start(runtime.refereeId);
+  runtime.pendingPhantomStart = false;
+  await saveMatch(runtime);
+}
+
+/**
+ * Lands a browser-proven hidden move (M8.5): `{c_new, ticket, proof}` only —
+ * the referee's on-chain verification is the sole legality check, exactly
+ * as for the AI path (the server cannot check what it cannot see).
+ */
+export async function submitPhantomMove(
+  runtime: MatchRuntime,
+  opts: { cNewHex: string; ticket: number; proofHex: string; sessionToken?: string },
+): Promise<{ round: number }> {
+  assertPhantomSession(runtime, opts.sessionToken);
+  const state = await runtime.client.gameState(runtime.refereeId);
+  if (state.status !== "Active") {
+    throw new BlackoutApiError(409, `match is not active (status: ${state.status})`);
+  }
+  const idx = phantomSeatIndex(runtime);
+  if (state.current_player !== idx) {
+    throw new BlackoutApiError(409, `it is not the Phantom's turn (current: ${state.current_player})`);
+  }
+  try {
+    await runtime.client.submitHiddenMove(runtime.refereeId, {
+      player: idx,
+      cNewHex: opts.cNewHex,
+      ticket: opts.ticket,
+      proofHex: opts.proofHex,
+    });
+    runtime.lastProof = { ok: true, round: state.round, cNew: opts.cNewHex, at: Date.now() };
+    runtime.log.push({
+      type: "hidden_move",
+      round: state.round,
+      player: "phantom",
+      to: -1, // unknown to the server by design (browser-held secret)
+      ticket: opts.ticket,
+      txOk: true,
+      at: Date.now(),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    runtime.lastProof = { ok: false, round: state.round, error: message, at: Date.now() };
+    runtime.log.push({ type: "error", message: `Phantom hidden move failed: ${message}`, at: Date.now() });
+    await saveMatch(runtime);
+    throw err;
+  }
+  await saveMatch(runtime);
+  return { round: state.round };
+}
+
+/** Lands the browser's reveal `(node, salt)` at a reveal checkpoint (public by design at that moment). */
+export async function submitPhantomReveal(
+  runtime: MatchRuntime,
+  opts: { node: number; saltHex: string; sessionToken?: string },
+): Promise<void> {
+  assertPhantomSession(runtime, opts.sessionToken);
+  const state = await runtime.client.gameState(runtime.refereeId);
+  await runtime.client.reveal(runtime.refereeId, {
+    player: phantomSeatIndex(runtime),
+    node: opts.node,
+    saltHex: opts.saltHex,
+  });
+  runtime.log.push({ type: "reveal", round: state.round, player: "phantom", node: opts.node, at: Date.now() });
+  await saveMatch(runtime);
 }
 
 /**
@@ -342,12 +470,14 @@ async function validateHumanMove(
     throw new BlackoutApiError(403, `seat "${playerId}" belongs to a different session`);
   }
 
-  const view = runtime.local.view(playerId);
-  const legal = view.legalMoves.some((m) => m.to === opts.node && m.ticket === opts.ticket);
+  const legalMoves = runtime.phantomHuman
+    ? legalPublicMovesFromChain(state, opts.player)
+    : runtime.local.view(playerId).legalMoves;
+  const legal = legalMoves.some((m) => m.to === opts.node && m.ticket === opts.ticket);
   if (!legal) {
     throw new BlackoutApiError(
       400,
-      `illegal move: node ${opts.node} / ticket ${opts.ticket} is not among this player's legal moves (${JSON.stringify(view.legalMoves)})`,
+      `illegal move: node ${opts.node} / ticket ${opts.ticket} is not among this player's legal moves (${JSON.stringify(legalMoves)})`,
     );
   }
   return { playerId, state };
@@ -359,7 +489,10 @@ function recordHumanMove(
   round: number,
   opts: { node: number; ticket: number },
 ): void {
-  runtime.local.submit(playerId, { type: "move", to: opts.node, ticket: opts.ticket });
+  // No engine mirror to advance in human-Phantom matches (see legal-moves.ts).
+  if (!runtime.phantomHuman) {
+    runtime.local.submit(playerId, { type: "move", to: opts.node, ticket: opts.ticket });
+  }
   runtime.log.push({
     type: "public_move",
     round,
@@ -437,7 +570,9 @@ export async function advanceAiTurns(
     if (!agent) break; // human's turn — stop and wait for /moves
 
     const rosterEntry = runtime.roster.find((p) => p.id === currentId)!;
-    const view = runtime.local.view(currentId);
+    const view = runtime.phantomHuman
+      ? { ...runtime.local.view(currentId), legalMoves: legalPublicMovesFromChain(state, state.current_player) }
+      : runtime.local.view(currentId);
     if (view.legalMoves.length === 0) {
       throw new Error(`advanceAiTurns: no legal moves available for "${currentId}"`);
     }
@@ -499,7 +634,7 @@ export async function advanceAiTurns(
         node: move.to as number,
         ticket: move.ticket as number,
       });
-      runtime.local.submit(currentId, move);
+      if (!runtime.phantomHuman) runtime.local.submit(currentId, move);
       runtime.log.push({
         type: "public_move",
         round,

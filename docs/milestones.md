@@ -320,3 +320,25 @@ exactly. Human seats bind to an httpOnly session cookie (closing the
 "anyone with the matchId can move any seat" API hole); matches resume
 from `/play/blackout?match=<id>` with light polling; an open-match lobby
 ships as `GET /api/blackout/matches` + `POST .../[id]/join`.
+
+### M8.5 — Browser proving: a human plays the Phantom
+
+New `@zktable/prover-web` package: Poseidon2 commitments straight from
+Barretenberg's own WASM (bb.js), a TS port of `zktable-graph`'s edge-tree
+builder, ACVM witness solving via noir_js, UltraHonk proving with the
+pinned keccak oracle (noir_js `1.0.0-beta.9`, bb.js `0.87.0` — matching
+the CLI pins). The make-or-break parity gate passed and is kept as a
+regression suite: `commit(5,12345)` matches the `zktable-graph` golden
+vector, the TS tree reproduces the CLI city-map root byte-for-byte, and a
+browser-generated proof (14592 B, 128 B public inputs, ~1.2 s in Node
+WASM) **verifies with the native `bb` CLI against the CLI-generated VK**
+— the same bytes the on-chain verifier is deployed with.
+
+The web app seats a human Phantom (`phantomSeat: 'human'`): the browser
+generates the start position + salts, posts only the commitment, proves
+every hidden move locally, and publishes `(node, salt)` only at reveal
+checkpoints; the server keeps no phantom secret and no engine mirror for
+these matches (investigator legality derives from the public graph —
+`legal-moves.ts`). Reveal ordering is preserved (the phantom-move route
+defers AI turns on reveal rounds until the reveal lands). COOP/COEP
+headers enable multithreaded WASM proving where available.

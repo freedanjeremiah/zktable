@@ -19,6 +19,8 @@ type CreateMatchBody = {
   walletAddress?: string;
   /** List the match in the open lobby with its human seat unclaimed. */
   open?: boolean;
+  /** 'human' seats the Phantom as a browser-proving human (M8.5). */
+  phantomSeat?: "ai" | "human";
 };
 
 /** GET /api/blackout/matches — open matches waiting for a human to join. */
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
       model: body.model,
       walletAddress: typeof body.walletAddress === "string" ? body.walletAddress : undefined,
       open: body.open === true,
+      phantomSeat: body.phantomSeat === "human" ? "human" : "ai",
       sessionToken: session.token,
       log: (line) => console.log(`[blackout:create ${requestTag}]`, line),
     });

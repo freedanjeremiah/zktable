@@ -26,6 +26,20 @@ const nextConfig: NextConfig = {
     };
     return config;
   },
+  // COOP/COEP make SharedArrayBuffer available so bb.js can prove
+  // multithreaded in the browser (M8.5); bb.js still works (slower)
+  // without threads, so these are an optimization, not a requirement.
+  async headers() {
+    return [
+      {
+        source: "/play/blackout",
+        headers: [
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+          { key: "Cross-Origin-Embedder-Policy", value: "require-corp" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

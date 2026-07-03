@@ -45,6 +45,8 @@ export type MatchRecord = {
   pendingStart?: { player: number; node: number; xdr: string };
   seats: Record<PlayerId, SeatBinding>;
   open: boolean;
+  phantomHuman: boolean;
+  pendingPhantomStart: boolean;
 };
 
 export function toRecord(runtime: MatchRuntime): MatchRecord {
@@ -75,6 +77,8 @@ export function toRecord(runtime: MatchRuntime): MatchRecord {
     pendingStart: runtime.pendingStart,
     seats: runtime.seats,
     open: runtime.open,
+    phantomHuman: runtime.phantomHuman,
+    pendingPhantomStart: runtime.pendingPhantomStart,
   };
 }
 
@@ -95,7 +99,11 @@ export function hydrateRecord(
   }
 
   const local = createLocalMatch(record.roster, record.config, record.localSeed);
-  for (const event of record.log) {
+  // Human-Phantom matches (M8.5) have no mirror to rebuild: the server
+  // never sees the Phantom's moves, so the log cannot be replayed. The
+  // fresh mirror is left untouched (and unused — legality comes from the
+  // public graph instead, see legal-moves.ts).
+  for (const event of record.phantomHuman ? [] : record.log) {
     if (event.type === "public_move") {
       local.submit(event.player, { type: "move", to: event.to, ticket: event.ticket });
     } else if (event.type === "hidden_move") {
@@ -135,5 +143,7 @@ export function hydrateRecord(
     pendingStart: record.pendingStart,
     seats: { ...record.seats },
     open: record.open,
+    phantomHuman: record.phantomHuman,
+    pendingPhantomStart: record.pendingPhantomStart,
   };
 }

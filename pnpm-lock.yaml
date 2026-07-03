@@ -108,6 +108,9 @@ importers:
       '@zktable/core':
         specifier: workspace:*
         version: link:../core
+      '@zktable/prover-web':
+        specifier: workspace:*
+        version: link:../prover-web
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1

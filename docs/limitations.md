@@ -67,22 +67,25 @@ assumed — no cross-instance move locking); and the session cookie is a
 convenience binding, not authentication (the contract-level guarantee is
 M8.1's `require_auth`).
 
-## 4. The AI Phantom proves server-side, using its own secret — legitimate, but browser proving for a human in the hidden role isn't wired up
+## 4. Browser proving is live; the hidden-role UX is young
 
-When an AI agent (heuristic or `ClaudeAgent`) plays a hidden role like
-Blackout's Phantom, it proves its own moves server-side, through the exact
-same `BoardProver`/`submit_hidden_move` path a human client would use (see
-`docs/adr/008-ai-moves-through-same-proof-path.md`) — this is legitimate:
-an agent proving knowledge of its *own* secret is no different in kind from
-a human doing so.
+**Fixed in M8.5:** a human can now play the Phantom with the secret never
+leaving their browser. `@zktable/prover-web` computes Poseidon2
+commitments and the edge-tree witness client-side and generates the
+UltraHonk proof with bb.js (keccak oracle) — CLI-parity is pinned by a
+regression suite (a browser proof verifies with the native `bb` CLI
+against the CLI-built VK, the same bytes the on-chain verifier holds; the
+TS tree reproduces `zktable-graph`'s city root byte-for-byte). The web app
+seats a human Phantom (`phantomSeat: 'human'`): the server holds no
+phantom secret and no engine mirror for those matches (investigator
+legality derives from the public graph), the browser posts only
+`{commitment}`, `{c_new, ticket, proof}`, and reveal-round `(node, salt)`.
 
-What's genuinely missing: a **human** playing a hidden role (e.g. a human
-Phantom, rather than an AI one) needs the proof generated client-side, in
-the browser, so their secret never leaves their machine even to a trusted
-server. Noir + `bb.js` is browser-capable (PRD §14) and the SDK's proof
-orchestration is designed to support it, but the web app's proving pipeline
-today runs server-side only — a human playing Blackout is always seated as
-an Investigator (a public-move role), never as the Phantom.
+**Remaining caveats:** the AI Phantom still proves server-side with its
+OWN secret (legitimate — ADR 008); the human-Phantom secret lives in
+`localStorage` (clearing site data forfeits the match); ~1s/proof in Node
+WASM, browser timing not yet benchmarked; and human-Phantom cannot yet be
+combined with a Freighter-bound investigator seat in the same match.
 
 ## 5. N-player elimination is live locally; the Liar's Dice *contract* stays 2-player
 

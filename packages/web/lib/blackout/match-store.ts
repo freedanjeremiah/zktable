@@ -78,6 +78,11 @@ export type MatchRuntime = {
   seats: Record<PlayerId, SeatBinding>;
   /** Listed in the open-match lobby while a human seat is unclaimed. */
   open: boolean;
+  /** The Phantom seat is a HUMAN proving in their browser (M8.5): the
+   *  server holds no phantom secret and keeps no engine mirror. */
+  phantomHuman: boolean;
+  /** Waiting for the browser to commit the Phantom's hidden start. */
+  pendingPhantomStart: boolean;
 };
 
 export type MatchSummary = {
