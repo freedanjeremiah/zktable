@@ -6,8 +6,11 @@
 //! stored `c_old`/`graph_root`, never client-supplied values).
 
 use soroban_env_host::DiagnosticLevel;
-use soroban_sdk::{testutils::Address as _, Address, Bytes, BytesN, Env, Symbol, Vec as SorobanVec};
-use zktable_referee::{Error, GameState, RefereeContract, Status};
+use soroban_sdk::{
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    Address, Bytes, BytesN, Env, IntoVal, Symbol, Vec as SorobanVec,
+};
+use zktable_referee::{Error, GameState, RefereeContract, RefereeContractClient, Status};
 use zktable_verifier::UltraHonkVerifierContract;
 
 const VK_BIN: &[u8] = include_bytes!("fixtures/move_along_vk");
@@ -86,6 +89,9 @@ fn single_reveal_round(env: &Env, round: u32) -> SorobanVec<u32> {
 fn setup_env() -> Env {
     let env = Env::default();
     env.cost_estimate().budget().reset_unlimited();
+    // These tests exercise game logic, not auth; per-seat require_auth is
+    // covered by the dedicated auth tests at the bottom of this file.
+    env.mock_all_auths();
     let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
     env
 }
@@ -481,4 +487,65 @@ fn no_ticket_rejects_when_exhausted() {
         })
         .expect_err("expected NoTicket");
     assert_eq!(err, Error::NoTicket);
+}
+
+// ---------- 7. auth: a signer who doesn't own the seat is rejected ----------
+
+#[test]
+fn wrong_signer_cannot_move_a_seat() {
+    let env = Env::default();
+    env.cost_estimate().budget().reset_unlimited();
+    let _ = env.host().set_diagnostic_level(DiagnosticLevel::None);
+    let verifier_id = register_verifier(&env);
+    let root = fixture_root(&env);
+    let referee_id = register_referee(&env, verifier_id, root, 24, reveal_rounds_24(&env));
+    let client = RefereeContractClient::new(&env, &referee_id);
+
+    let phantom_addr = Address::generate(&env);
+    let investigator_addr = Address::generate(&env);
+    let attacker = Address::generate(&env);
+
+    // Lobby setup: join is permissionless, but set_*_start needs each seat's
+    // auth — mock all auths just to build a valid Active game.
+    env.mock_all_auths();
+    client.join(&phantom_addr, &phantom_role(&env), &1, &1, &1);
+    client.join(&investigator_addr, &investigator_role(&env), &1, &1, &1);
+    client.set_hidden_start(&0, &fixture_c_old(&env));
+    client.set_public_start(&1, &10);
+    client.start();
+
+    // Phantom's turn (seat 0). The attacker signs instead of the phantom:
+    // require_auth(phantom_addr) must abort the invocation before any state
+    // change or proof verification.
+    let proof = Bytes::from_slice(&env, PROOF_BIN);
+    env.set_auths(&[]);
+    env.mock_auths(&[MockAuth {
+        address: &attacker,
+        invoke: &MockAuthInvoke {
+            contract: &referee_id,
+            fn_name: "submit_hidden_move",
+            args: (0u32, fixture_c_new(&env), 0u32, proof.clone()).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let res = client.try_submit_hidden_move(&0, &fixture_c_new(&env), &0, &proof);
+    assert!(res.is_err(), "attacker-signed hidden move must be rejected");
+
+    // The phantom's own signature still works.
+    env.set_auths(&[]);
+    env.mock_auths(&[MockAuth {
+        address: &phantom_addr,
+        invoke: &MockAuthInvoke {
+            contract: &referee_id,
+            fn_name: "submit_hidden_move",
+            args: (0u32, fixture_c_new(&env), 0u32, proof.clone()).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.submit_hidden_move(&0, &fixture_c_new(&env), &0, &proof);
+    let state = game_state(&env, &referee_id);
+    assert_eq!(
+        state.players.get(0).unwrap().hidden_commitment,
+        Some(fixture_c_new(&env))
+    );
 }

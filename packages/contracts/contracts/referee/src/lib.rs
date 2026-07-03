@@ -218,6 +218,16 @@ fn check_turn(env: &Env, player: u32) -> Result<(), Error> {
     Ok(())
 }
 
+/// Loads the seat and requires its owner's authorization. Every per-seat
+/// entry point calls this before touching state; `join`/`start` stay
+/// permissionless (enrolling an address costs it nothing — the trust
+/// boundary is per-seat actions, see docs/superpowers/specs M8.1).
+fn require_seat_auth(players: &Vec<PlayerData>, player: u32) -> Result<PlayerData, Error> {
+    let p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+    p.address.require_auth();
+    Ok(p)
+}
+
 fn decrement_ticket(p: &mut PlayerData, ticket: u32) -> Result<(), Error> {
     let count = match ticket {
         0 => &mut p.ticket_taxi,
@@ -299,7 +309,7 @@ impl RefereeContract {
             return Err(Error::NotLobbyPhase);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if p.role != phantom_sym(&env) {
             return Err(Error::WrongRole);
         }
@@ -315,7 +325,7 @@ impl RefereeContract {
             return Err(Error::NotLobbyPhase);
         }
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if p.role != investigator_sym(&env) {
             return Err(Error::WrongRole);
         }
@@ -389,7 +399,7 @@ impl RefereeContract {
         }
         check_turn(&env, player)?;
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if p.role != phantom_sym(&env) {
             return Err(Error::WrongRole);
         }
@@ -443,7 +453,7 @@ impl RefereeContract {
         }
         check_turn(&env, player)?;
         let mut players = get_players(&env);
-        let mut p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let mut p = require_seat_auth(&players, player)?;
         if p.role != investigator_sym(&env) {
             return Err(Error::WrongRole);
         }
@@ -471,7 +481,7 @@ impl RefereeContract {
             return Err(Error::NotActive);
         }
         let players = get_players(&env);
-        let p = players.get(player).ok_or(Error::BadPlayerIndex)?;
+        let p = require_seat_auth(&players, player)?;
         if p.role != phantom_sym(&env) {
             return Err(Error::WrongRole);
         }
