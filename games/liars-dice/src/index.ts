@@ -1,5 +1,7 @@
 export {
   DICE_PER_PLAYER,
+  MAX_PLAYERS,
+  MIN_PLAYERS,
   N_PLAYERS,
   SIDES,
   liarsDice,

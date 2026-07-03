@@ -8,7 +8,7 @@ import { randomBytes } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createMatch } from '@zktable/core'
 import type { Match, Move, PlayerId } from '@zktable/core'
-import { DICE_PER_PLAYER, N_PLAYERS, SIDES, liarsDice } from './liars-dice.js'
+import { DICE_PER_PLAYER, MAX_PLAYERS, MIN_PLAYERS, N_PLAYERS, SIDES, liarsDice } from './liars-dice.js'
 import type { LiarsDiceConfig } from './liars-dice.js'
 import { DiceProver } from './dice-prover.js'
 import {
@@ -25,9 +25,12 @@ import { chooseMove } from './strategy.js'
 export type Roster = Array<{ id: PlayerId }>
 
 /** Fixed 2-player roster — the liars-dice-referee's v1 sound scope (see its report). */
-export function buildRoster(): Roster {
+export function buildRoster(count: number = N_PLAYERS): Roster {
+  if (count < MIN_PLAYERS || count > MAX_PLAYERS) {
+    throw new Error(`buildRoster: count must be in [${MIN_PLAYERS}, ${MAX_PLAYERS}], got ${count}`)
+  }
   const roster: Roster = []
-  for (let i = 0; i < N_PLAYERS; i++) roster.push({ id: `player${i + 1}` })
+  for (let i = 0; i < count; i++) roster.push({ id: `player${i + 1}` })
   return roster
 }
 
@@ -45,8 +48,19 @@ export function stepLocalMatch(match: Match, seed: string): LocalStep {
   const playerId = match.state.turn.current
   const view = match.view(playerId)
   const moveSeed = `${seed}:bid${(match.state.public.bidHistory as unknown[]).length}:${playerId}`
+  const roundBefore = match.state.public.roundNumber as number
   const move = chooseMove(view, moveSeed)
   match.submit(playerId, move)
+  // A challenge that continues the game re-rolls every alive player (M8.2
+  // multi-round). `apply` is pure over public state, so mirror the fresh
+  // rolls back into each player's secret here (same setSecret pattern as
+  // Blackout's stepLocalMatch).
+  if (match.state.status === 'active' && (match.state.public.roundNumber as number) !== roundBefore) {
+    const rolls = match.state.public.diceByPlayer as Record<PlayerId, number[]>
+    for (const [id, dice] of Object.entries(rolls)) {
+      match.setSecret(id, { dice })
+    }
+  }
   if (move.type === 'bid') {
     return { playerId, move: { type: 'bid', quantity: move.quantity as number, face: move.face as number } }
   }
@@ -62,7 +76,9 @@ export function playLocalMatch(
 ): { match: Match; steps: LocalStep[] } {
   const match = createLocalMatch(roster, config, seed)
   const steps: LocalStep[] = []
-  const maxSteps = opts.maxSteps ?? 200
+  // Multi-round die-loss games run long: up to ~9 challenges (one die lost
+  // each) with a full escalating bid war before every one of them.
+  const maxSteps = opts.maxSteps ?? 600
   while (match.state.status === 'active' && steps.length < maxSteps) {
     steps.push(stepLocalMatch(match, seed))
   }
@@ -229,7 +245,9 @@ export async function playLiarsDice(opts: PlayLiarsDiceOptions = {}): Promise<Tr
   }
 
   // --- local mirror, seeded with the REAL rolled dice ------------------------
-  const localMatch = createLocalMatch(roster, { diceByPlayer }, seed)
+  // 'seat' loss keeps the local mirror in lockstep with the v1 referee's
+  // single-round semantics (the loser is eliminated outright).
+  const localMatch = createLocalMatch(roster, { diceByPlayer, lossMode: 'seat' }, seed)
 
   // --- phase 4: bid / challenge, driven by the seeded strategy ---------------
   const moves: Transcript['moves'] = []

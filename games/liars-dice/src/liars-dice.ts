@@ -30,7 +30,10 @@ import type { Move, MoveContext, Outcome, PlayerId, PlayerView, MatchState, Publ
 
 export const SIDES = 6
 export const DICE_PER_PLAYER = 5
-/** v1 referee scope (see the liars-dice-referee report): exactly 2 players. */
+/** The player range the local engine supports (M8.2 multi-round elimination). */
+export const MIN_PLAYERS = 2
+export const MAX_PLAYERS = 6
+/** Default seat count for the demos/runner. The ON-CHAIN referee's v1 scope is exactly 2. */
 export const N_PLAYERS = 2
 
 export type BidEntry = { player: PlayerId; quantity: number; face: number }
@@ -38,12 +41,23 @@ export type BidEntry = { player: PlayerId; quantity: number; face: number }
 /** Per-match config, passed as `MatchOptions.config.liarsDice`. */
 export type LiarsDiceConfig = {
   /**
-   * The REAL rolled dice per player. Required for the on-chain runner (the
-   * ZK-proven, seed-derived roll); if omitted, `setup` derives a
-   * deterministic seeded roll from `MatchOptions.seed` so pure local tests
-   * don't need a prover.
+   * The REAL rolled dice per player (round 1 only — later rounds, which
+   * exist only in local multi-round play, re-roll deterministically from
+   * the match seed). Required for the on-chain runner (the ZK-proven,
+   * seed-derived roll); if omitted, `setup` derives a deterministic seeded
+   * roll from `MatchOptions.seed` so pure local tests don't need a prover.
    */
   diceByPlayer?: Record<PlayerId, number[]>
+  /**
+   * What a lost challenge costs (M8.2):
+   * - 'die' (default): the loser loses ONE die; alive players re-roll and a
+   *   new round begins; a player at 0 dice is eliminated (the engine skips
+   *   their turns via `turn.eliminated`); last player with dice wins.
+   * - 'seat': the loser loses ALL dice at once — the exact single-round
+   *   semantics of the v1 on-chain referee (`runner.ts` passes this so the
+   *   local mirror stays in lockstep with the chain).
+   */
+  lossMode?: 'die' | 'seat'
 }
 
 function readConfig(raw: Record<string, unknown>): LiarsDiceConfig {
@@ -102,7 +116,7 @@ function bidsAbove(view: PlayerView): Move[] {
 
 export const liarsDice = defineGame({
   name: 'liars-dice',
-  players: { min: N_PLAYERS, max: N_PLAYERS },
+  players: { min: MIN_PLAYERS, max: MAX_PLAYERS },
 
   components: {
     // Public dice-pool declaration; the actual roll is hidden per player.
@@ -112,10 +126,14 @@ export const liarsDice = defineGame({
   state: {
     public: (): PublicState => ({
       // See the module doc: local-mirror-only visibility, not real hiding.
+      // Holds the CURRENT round's rolls for players still in the game.
       diceByPlayer: {} as Record<PlayerId, number[]>,
+      // Dice remaining per player; 0 == eliminated (engine skips their turn).
+      diceCountByPlayer: {} as Record<PlayerId, number>,
+      roundNumber: 1,
       bidHistory: [] as BidEntry[],
       currentBid: null as BidEntry | null,
-      eliminated: null as PlayerId | null,
+      eliminatedIds: [] as PlayerId[],
       winnerId: null as PlayerId | null,
       resolvedCount: null as number | null,
     }),
@@ -137,14 +155,20 @@ export const liarsDice = defineGame({
     const cfg = readConfig(ctx.config)
     const seed = (ctx.config.seed as string | undefined) ?? 'liars-dice-default-seed'
     const diceByPlayer: Record<PlayerId, number[]> = {}
+    const diceCountByPlayer: Record<PlayerId, number> = {}
     for (const p of ctx.players) {
       diceByPlayer[p.id] = cfg.diceByPlayer?.[p.id] ?? seededRoll(`${seed}:${p.id}`, DICE_PER_PLAYER)
+      diceCountByPlayer[p.id] = diceByPlayer[p.id]!.length
     }
-    return { ...state, public: { ...state.public, diceByPlayer } }
+    return { ...state, public: { ...state.public, diceByPlayer, diceCountByPlayer } }
   },
 
   turn: {
     order: 'clockwise',
+    // A player with no dice left is out: the engine skips their turn and
+    // returns no legal moves for them (M8.2 turn-skip hook).
+    eliminated: (state: MatchState, playerId: PlayerId): boolean =>
+      ((state.public.diceCountByPlayer as Record<PlayerId, number>)[playerId] ?? DICE_PER_PLAYER) === 0,
     moves: {
       bid: {
         // Plain public escalation — no ZK binding (the hidden randomness is
@@ -185,13 +209,48 @@ export const liarsDice = defineGame({
           }
           const challenger = ctx.playerId
           const loser = count >= bid.quantity ? challenger : bid.player
-          const winnerEntry = ctx.players.find((p) => p.id !== loser)
+
+          const cfg = readConfig(ctx.config)
+          const lossMode = cfg.lossMode ?? 'die'
+          const prevCounts = state.public.diceCountByPlayer as Record<PlayerId, number>
+          const loserCount =
+            lossMode === 'seat' ? 0 : Math.max(0, (prevCounts[loser] ?? DICE_PER_PLAYER) - 1)
+          const diceCountByPlayer = { ...prevCounts, [loser]: loserCount }
+
+          const prevEliminated = (state.public.eliminatedIds as PlayerId[]) ?? []
+          const eliminatedIds = loserCount === 0 ? [...prevEliminated, loser] : prevEliminated
+
+          const alive = ctx.players.map((p) => p.id).filter((id) => (diceCountByPlayer[id] ?? 0) > 0)
+          if (alive.length <= 1) {
+            return {
+              ...state,
+              public: {
+                ...state.public,
+                diceCountByPlayer,
+                eliminatedIds,
+                winnerId: alive[0] ?? null,
+                resolvedCount: count,
+              },
+            }
+          }
+
+          // Multi-round: alive players re-roll (deterministically from the
+          // match seed + round number) and bidding restarts.
+          const seed = (ctx.config.seed as string | undefined) ?? 'liars-dice-default-seed'
+          const roundNumber = (state.public.roundNumber as number) + 1
+          const nextDice: Record<PlayerId, number[]> = {}
+          for (const id of alive) {
+            nextDice[id] = seededRoll(`${seed}:${id}:r${roundNumber}`, diceCountByPlayer[id]!)
+          }
           return {
             ...state,
             public: {
               ...state.public,
-              eliminated: loser,
-              winnerId: winnerEntry?.id ?? null,
+              diceByPlayer: nextDice,
+              diceCountByPlayer,
+              roundNumber,
+              eliminatedIds,
+              currentBid: null,
               resolvedCount: count,
             },
           }
